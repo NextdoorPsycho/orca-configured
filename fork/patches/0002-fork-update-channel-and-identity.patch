@@ -394,6 +394,44 @@ index b5488efe245ee96ded7eb60bd9439c958e09915d..7e877c31d125c658c85e0c5fd35360a3
  # Why: Orca packages the CLI entrypoint outside app.asar so the public shell
  # command can execute it directly with ELECTRON_RUN_AS_NODE, mirroring VS Code's
  # launcher model instead of requiring a separate npm-distributed binary.
+diff --git a/src/main/codex/codex-home-paths.ts b/src/main/codex/codex-home-paths.ts
+index 5402a316d0e04eff365e1cfa2cfd61e3e00271b6..00a053e519193d04f77b7909984c97e95540c935 100644
+--- a/src/main/codex/codex-home-paths.ts
++++ b/src/main/codex/codex-home-paths.ts
+@@ -57,13 +57,15 @@ export function getOrcaUserDataPath(): string {
+   }
+   // Why: CLI hook commands import this module outside Electron. Mirror the CLI
+   // runtime metadata path so offline hook status/on/off uses the same userData.
++  // Fork: 'Orca Configured' — the official install's 'orca' dir belongs to the
++  // other app and must never be read or written from here.
+   if (process.platform === 'darwin') {
+-    return join(homedir(), 'Library', 'Application Support', 'orca')
++    return join(homedir(), 'Library', 'Application Support', 'Orca Configured')
+   }
+   if (process.platform === 'win32') {
+-    return join(process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'), 'orca')
++    return join(process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'), 'Orca Configured')
+   }
+-  return join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'orca')
++  return join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'Orca Configured')
+ }
+ 
+ // Why: each managed home (the shared runtime mirror, or a per-account
+diff --git a/src/main/command-code/command-code-managed-script.ts b/src/main/command-code/command-code-managed-script.ts
+index ca45f2fa57911e304812ec3904b8a2f790c2c1b2..1c16dab259a068efe96ea9f2d102ca57c5890df9 100644
+--- a/src/main/command-code/command-code-managed-script.ts
++++ b/src/main/command-code/command-code-managed-script.ts
+@@ -108,8 +108,8 @@ export function buildCommandCodeManagedScript(
+     '    "$HOME/Library/Application Support/orca-dev/agent-hooks/endpoint.env" \\',
+     '    "${XDG_CONFIG_HOME:-$HOME/.config}/orca-dev/agent-hooks"/*/endpoint.env \\',
+     '    "${XDG_CONFIG_HOME:-$HOME/.config}/orca-dev/agent-hooks/endpoint.env" \\',
+-    '    "$HOME/Library/Application Support/orca/agent-hooks/endpoint.env" \\',
+-    '    "${XDG_CONFIG_HOME:-$HOME/.config}/orca/agent-hooks/endpoint.env"; do',
++    '    "$HOME/Library/Application Support/Orca Configured/agent-hooks/endpoint.env" \\',
++    '    "${XDG_CONFIG_HOME:-$HOME/.config}/Orca Configured/agent-hooks/endpoint.env"; do',
+     '    [ -r "$endpoint" ] || continue',
+     '    endpoint_port=$(sed -n "s/^ORCA_AGENT_HOOK_PORT=//p" "$endpoint" | head -n 1)',
+     '    if [ "$endpoint_port" = "$ORCA_AGENT_HOOK_PORT" ]; then',
 diff --git a/src/main/computer/macos-computer-use-permissions.ts b/src/main/computer/macos-computer-use-permissions.ts
 index 36d7cedf59d7bcb34e5fd23dc54e9bf2701691b7..6624437fe473bbea1d584159ddf29620411658be 100644
 --- a/src/main/computer/macos-computer-use-permissions.ts
@@ -528,6 +566,26 @@ index acff095a82babe8d15c8b5732c0a88155c874ad0..58b9a77e1e66824902da9c7937524d3f
  ])
  
  /** Why: the prompt classes #9756 is about — other-apps' data plus the protected home folders agents sweep. */
+diff --git a/src/main/observability/logs-directory.ts b/src/main/observability/logs-directory.ts
+index 94a1b7baae82e47457441f670c00628a07f46d30..5a7335f83935a2781ec48d8751d9ca7fe6231fe9 100644
+--- a/src/main/observability/logs-directory.ts
++++ b/src/main/observability/logs-directory.ts
+@@ -15,12 +15,12 @@ function getUserDataDir(): string {
+     // fallback so callers can resolve the path without the Electron runtime.
+     const home = homedir()
+     if (platform() === 'darwin') {
+-      return join(home, 'Library', 'Application Support', 'Orca')
++      return join(home, 'Library', 'Application Support', 'Orca Configured')
+     }
+     if (platform() === 'win32') {
+-      return join(process.env.APPDATA ?? home, 'Orca')
++      return join(process.env.APPDATA ?? home, 'Orca Configured')
+     }
+-    return join(home, '.config', 'Orca')
++    return join(home, '.config', 'Orca Configured')
+   }
+ }
+ 
 diff --git a/src/main/startup/dev-instance-identity.test.ts b/src/main/startup/dev-instance-identity.test.ts
 index 2b06e85dda4b87f0902dea3f5bb9cfd257c43c8f..8242151a8f5cb5d21304bd19cfe100aa636728be 100644
 --- a/src/main/startup/dev-instance-identity.test.ts
@@ -613,6 +671,42 @@ index 6d13541ea1f8d19482c07fee8ff6819275b702ad..f3aa07788d60e94414af47bf9c08a7c1
  const MAX_LABEL_LENGTH = 80
  
  export type DevInstanceIdentity = AppIdentity & {
+diff --git a/src/main/startup/fork-user-data-fallbacks.test.ts b/src/main/startup/fork-user-data-fallbacks.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..668602ee9b10132e2b3fe2d7980c0c3d0260d6f3
+--- /dev/null
++++ b/src/main/startup/fork-user-data-fallbacks.test.ts
+@@ -0,0 +1,30 @@
++// Fork-identity guard: out-of-Electron code paths must resolve the FORK's userData,
++// never the official install's 'orca'/'Orca' directories (cross-wiring the two apps).
++import { afterEach, describe, expect, it, vi } from 'vitest'
++
++vi.mock('electron', () => ({ app: undefined }))
++
++import { getOrcaUserDataPath } from '../codex/codex-home-paths'
++import { buildCommandCodeManagedScript } from '../command-code/command-code-managed-script'
++
++afterEach(() => {
++  delete process.env.ORCA_USER_DATA_PATH
++})
++
++describe('fork userData fallbacks', () => {
++  it('resolves the fork profile directory when ORCA_USER_DATA_PATH is unset', () => {
++    delete process.env.ORCA_USER_DATA_PATH
++    expect(getOrcaUserDataPath()).toContain('Orca Configured')
++  })
++
++  it('honors an explicit ORCA_USER_DATA_PATH override', () => {
++    process.env.ORCA_USER_DATA_PATH = '/tmp/custom-orca-userdata'
++    expect(getOrcaUserDataPath()).toBe('/tmp/custom-orca-userdata')
++  })
++
++  it('probes the fork endpoint files, not the official install, in the managed script', () => {
++    const script = buildCommandCodeManagedScript()
++    expect(script).toContain('Orca Configured/agent-hooks/endpoint.env')
++    expect(script).not.toContain('Support/orca/agent-hooks/endpoint.env')
++  })
++})
 diff --git a/src/main/updater-prerelease-feed-readiness.test.ts b/src/main/updater-prerelease-feed-readiness.test.ts
 index 34340c0717e979856df40784b2a8709e68daa696..28d379559de0d7c9900fb02e8dca617cb4ec5caf 100644
 --- a/src/main/updater-prerelease-feed-readiness.test.ts
