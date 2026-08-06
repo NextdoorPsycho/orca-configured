@@ -179,7 +179,9 @@ jobs:
         include:
           # macOS builds x64 + arm64 dmg/zip in one electron-builder run (the
           # config's mac.target lists both arches, as upstream ships them).
-          - os: macos-14
+          # macos-15, not -14: the computer-use Swift package needs Swift 6,
+          # which ships with Xcode 16 (upstream builds on a macos-15 runner).
+          - os: macos-15
             platform: mac
             eb_cache_path: |
               ~/Library/Caches/electron
@@ -211,6 +213,12 @@ jobs:
       # ceiling on release runners.
       NODE_OPTIONS: --max-old-space-size=4096
     steps:
+      # Windows runners default to core.autocrlf=true, which checks the tree
+      # out with CRLF endings — every LF patch context then fails to apply.
+      - name: Force LF checkout
+        shell: bash
+        run: git config --global core.autocrlf false
+
       - name: Checkout
         uses: actions/checkout@v6
         with:
