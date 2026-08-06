@@ -1,9 +1,9 @@
 diff --git a/src/renderer/src/components/settings/ForkChangesPane.test.tsx b/src/renderer/src/components/settings/ForkChangesPane.test.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..c867c48acf672098504c54b727328903594334fa
+index 0000000000000000000000000000000000000000..c38eb71596e4bf605ef3f729dcf43aadcac6b43e
 --- /dev/null
 +++ b/src/renderer/src/components/settings/ForkChangesPane.test.tsx
-@@ -0,0 +1,139 @@
+@@ -0,0 +1,145 @@
 +// @vitest-environment happy-dom
 +
 +import { act } from 'react'
@@ -90,8 +90,8 @@ index 0000000000000000000000000000000000000000..c867c48acf672098504c54b727328903
 +      expect(markup).toContain(title)
 +      expect(titles).toContain(title)
 +    }
-+    // Three sidebar switches on; the only off switch is unlimited tab width.
-+    expect(markup.match(/aria-checked="true"/g)).toHaveLength(3)
++    // Titlebar name + three sidebar switches on; the only off switch is unlimited tab width.
++    expect(markup.match(/aria-checked="true"/g)).toHaveLength(4)
 +    expect(markup.match(/aria-checked="false"/g)).toHaveLength(1)
 +  })
 +
@@ -110,6 +110,12 @@ index 0000000000000000000000000000000000000000..c867c48acf672098504c54b727328903
 +    root.unmount()
 +    return updateSettings
 +  }
++
++  it('turns the titlebar app name off through its switch', async () => {
++    expect(await clickSwitch('fork-changes-titlebar-app-name')).toHaveBeenCalledWith({
++      showTitlebarAppName: false
++    })
++  })
 +
 +  it('turns each sidebar entry off through its switch', async () => {
 +    expect(await clickSwitch('fork-changes-sidebar-tasks')).toHaveBeenCalledWith({
@@ -145,10 +151,10 @@ index 0000000000000000000000000000000000000000..c867c48acf672098504c54b727328903
 +})
 diff --git a/src/renderer/src/components/settings/ForkChangesPane.tsx b/src/renderer/src/components/settings/ForkChangesPane.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..323ea326083c9b5de1a5a41e8267cc03f6ea5bfa
+index 0000000000000000000000000000000000000000..79a3f9caed568b5fd4bf5035f280aa1371ce0844
 --- /dev/null
 +++ b/src/renderer/src/components/settings/ForkChangesPane.tsx
-@@ -0,0 +1,154 @@
+@@ -0,0 +1,174 @@
 +import type { GlobalSettings } from '../../../../shared/types'
 +import type { SettingsSearchEntry } from './settings-search'
 +import { translate } from '@/i18n/i18n'
@@ -238,6 +244,26 @@ index 0000000000000000000000000000000000000000..323ea326083c9b5de1a5a41e8267cc03
 +        )}
 +        checked={settings.experimentalTerminalTabsUnlimitedWidth === true}
 +        onToggle={(next) => updateSettings({ experimentalTerminalTabsUnlimitedWidth: next })}
++        searchQuery={searchQuery}
++      />
++
++      <ForkToggleRow
++        entry={entries.titlebarAppName}
++        id="fork-changes-titlebar-app-name"
++        label={translate(
++          'auto.components.settings.ForkChangesPane.titlebarAppName.title',
++          'App name in titlebar'
++        )}
++        copy={translate(
++          'auto.components.settings.ForkChangesPane.titlebarAppName.copy',
++          'Show the Orca app name next to the window controls. Off reclaims the space.'
++        )}
++        toggleLabel={translate(
++          'auto.components.settings.ForkChangesPane.titlebarAppName.toggleLabel',
++          'Toggle the titlebar app name'
++        )}
++        checked={settings.showTitlebarAppName !== false}
++        onToggle={(next) => updateSettings({ showTitlebarAppName: next })}
 +        searchQuery={searchQuery}
 +      />
 +
@@ -341,10 +367,10 @@ index fe894fa07e6fefda622b50ecda61461b9de353f3..397f330f6d62fd8165b0fd0837a402f6
                      mounted={isSectionMounted('plugins')}
 diff --git a/src/renderer/src/components/settings/fork-changes-search.ts b/src/renderer/src/components/settings/fork-changes-search.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..daaf392ce741031d026d1fbf98c2dc3d89d6ee45
+index 0000000000000000000000000000000000000000..78473d77ea111ca658b91f7e2c2ef510b4e6481a
 --- /dev/null
 +++ b/src/renderer/src/components/settings/fork-changes-search.ts
-@@ -0,0 +1,127 @@
+@@ -0,0 +1,146 @@
 +import type { SettingsSearchEntry } from './settings-search'
 +import { createLocalizedCatalog } from '@/i18n/localized-catalog'
 +import { translate } from '@/i18n/i18n'
@@ -381,6 +407,18 @@ index 0000000000000000000000000000000000000000..daaf392ce741031d026d1fbf98c2dc3d
 +      )
 +    ],
 +    targetSectionId: 'fork-changes-unlimited-tab-width'
++  },
++  {
++    title: translate(
++      'auto.components.settings.forkChanges.search.titlebarAppNameTitle',
++      'App name in titlebar'
++    ),
++    description: translate(
++      'auto.components.settings.forkChanges.search.titlebarAppNameDescription',
++      'Show the Orca app name next to the window controls.'
++    ),
++    keywords: sidebarEntryKeywords(),
++    targetSectionId: 'fork-changes-titlebar-app-name'
 +  },
 +  {
 +    title: translate(
@@ -444,6 +482,7 @@ index 0000000000000000000000000000000000000000..daaf392ce741031d026d1fbf98c2dc3d
 +
 +export function getForkChangesSearchEntry(): {
 +  unlimitedTabWidth: SettingsSearchEntry
++  titlebarAppName: SettingsSearchEntry
 +  sidebarTasks: SettingsSearchEntry
 +  sidebarAgents: SettingsSearchEntry
 +  sidebarAutomations: SettingsSearchEntry
@@ -453,6 +492,12 @@ index 0000000000000000000000000000000000000000..daaf392ce741031d026d1fbf98c2dc3d
 +      translate(
 +        'auto.components.settings.forkChanges.search.unlimitedTabWidthTitle',
 +        'Unlimited tab width'
++      )
++    ),
++    titlebarAppName: findEntry(
++      translate(
++        'auto.components.settings.forkChanges.search.titlebarAppNameTitle',
++        'App name in titlebar'
 +      )
 +    ),
 +    sidebarTasks: findEntry(
@@ -771,7 +816,7 @@ index 15fdd70342f5256a350d3782d5127415086f680a..4c226bd56e09a060b0aaed308df8bd7e
        ? [
            {
 diff --git a/src/renderer/src/i18n/locales/en.json b/src/renderer/src/i18n/locales/en.json
-index 29218566eb87367c3cc26eb85c810c1ec1fca476..dd63313b67391f4bbc675057e2545a267cd56f2c 100644
+index 29218566eb87367c3cc26eb85c810c1ec1fca476..1b8083086feaa146c45b795be9ebe3cd1133f563 100644
 --- a/src/renderer/src/i18n/locales/en.json
 +++ b/src/renderer/src/i18n/locales/en.json
 @@ -871,7 +871,9 @@
@@ -808,7 +853,7 @@ index 29218566eb87367c3cc26eb85c810c1ec1fca476..dd63313b67391f4bbc675057e2545a26
          },
          "SettingsFormControls": {
            "42a4d15a30": "No matching fonts.",
-@@ -10300,6 +10307,40 @@
+@@ -10300,6 +10307,47 @@
            "description": "Input device used for voice dictation. System default follows the OS microphone setting.",
            "accessHint": "Allow microphone access to list input devices.",
            "allowAccess": "Allow access"
@@ -833,6 +878,11 @@ index 29218566eb87367c3cc26eb85c810c1ec1fca476..dd63313b67391f4bbc675057e2545a26
 +            "title": "Automations in sidebar",
 +            "copy": "Show the Automations entry in the left sidebar.",
 +            "toggleLabel": "Toggle the sidebar Automations entry"
++          },
++          "titlebarAppName": {
++            "title": "App name in titlebar",
++            "copy": "Show the Orca app name next to the window controls. Off reclaims the space.",
++            "toggleLabel": "Toggle the titlebar app name"
 +          }
 +        },
 +        "forkChanges": {
@@ -844,7 +894,9 @@ index 29218566eb87367c3cc26eb85c810c1ec1fca476..dd63313b67391f4bbc675057e2545a26
 +            "sidebarAgentsTitle": "Agents in sidebar",
 +            "sidebarAgentsDescription": "Show or hide the Agents entry in the left sidebar.",
 +            "sidebarAutomationsTitle": "Automations in sidebar",
-+            "sidebarAutomationsDescription": "Show or hide the Automations entry in the left sidebar."
++            "sidebarAutomationsDescription": "Show or hide the Automations entry in the left sidebar.",
++            "titlebarAppNameTitle": "App name in titlebar",
++            "titlebarAppNameDescription": "Show the Orca app name next to the window controls."
 +          }
          }
        },
