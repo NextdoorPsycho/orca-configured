@@ -2057,13 +2057,14 @@ describe('updater', () => {
     const { setupAutoUpdater } = await import('./updater')
 
     setupAutoUpdater(mainWindow as never, {
-      getLastUpdateCheckAt: () => Date.now() - 23 * 60 * 60 * 1000,
+      // 20 of the 30-minute interval already elapsed -> 10 minutes remain.
+      getLastUpdateCheckAt: () => Date.now() - 20 * 60 * 1000,
       setLastUpdateCheckAt
     })
 
     expect(autoUpdaterMock.checkForUpdates).not.toHaveBeenCalled()
 
-    await vi.advanceTimersByTimeAsync(59 * 60 * 1000)
+    await vi.advanceTimersByTimeAsync(9 * 60 * 1000)
     expect(autoUpdaterMock.checkForUpdates).not.toHaveBeenCalled()
 
     await vi.advanceTimersByTimeAsync(60 * 1000)
