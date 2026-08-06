@@ -2595,8 +2595,14 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
     }
     // 'downloading'/'downloaded'/'error': leave updateChangelog untouched to keep the original 'available' content.
     if (status.state !== prevState) {
-      // Why: re-surface the card on each phase transition so a collapsed `downloading` doesn't bury `downloaded`/`error`.
-      update.updateCardCollapsed = false
+      // Fork: only user-initiated cycles re-surface the card. Background phases
+      // stay quiet — the status-bar indicator is the notification surface — and
+      // never close a card the user opened themselves.
+      const userInitiated =
+        status.state === 'checking' ? status.userInitiated === true : get().updateUserInitiatedCycle
+      if (userInitiated) {
+        update.updateCardCollapsed = false
+      }
     }
     set(update)
   },
@@ -2628,7 +2634,8 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
       }
       return { dismissedUpdateVersion, updateUserInitiatedCycle: false }
     }),
-  updateCardCollapsed: false,
+  // Fork: hidden until opened via the status-bar indicator or a user-initiated check.
+  updateCardCollapsed: true,
   setUpdateCardCollapsed: (collapsed) => set({ updateCardCollapsed: collapsed }),
   updateReassuranceSeen: false,
   markUpdateReassuranceSeen: () => {

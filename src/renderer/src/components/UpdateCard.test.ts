@@ -208,45 +208,62 @@ describe('dismissUpdate nudge-aware', () => {
 // ── updateCardCollapsed ──────────────────────────────────────────────
 
 describe('updateCardCollapsed', () => {
-  it('defaults to false', () => {
+  // Fork: the card starts hidden — the status-bar indicator is the notification
+  // surface, and background update cycles must never interrupt a session.
+  it('defaults to true', () => {
     const store = createTestStore()
-    expect(store.getState().updateCardCollapsed).toBe(false)
+    expect(store.getState().updateCardCollapsed).toBe(true)
   })
 
   it('setUpdateCardCollapsed toggles the flag without persisting', () => {
     const store = createTestStore()
 
-    store.getState().setUpdateCardCollapsed(true)
-    expect(store.getState().updateCardCollapsed).toBe(true)
+    store.getState().setUpdateCardCollapsed(false)
+    expect(store.getState().updateCardCollapsed).toBe(false)
     expect(window.api.ui.set).not.toHaveBeenCalledWith(
       expect.objectContaining({ updateCardCollapsed: expect.anything() })
     )
 
-    store.getState().setUpdateCardCollapsed(false)
-    expect(store.getState().updateCardCollapsed).toBe(false)
-  })
-
-  it('resets to false on every state transition so new phases re-surface', () => {
-    const store = createTestStore()
-
-    setState(store, { state: 'downloading', percent: 20, version: '1.2.0' })
     store.getState().setUpdateCardCollapsed(true)
     expect(store.getState().updateCardCollapsed).toBe(true)
+  })
 
-    // Why: percent-only updates are not transitions and must not reset.
-    setState(store, { state: 'downloading', percent: 50, version: '1.2.0' })
+  it('keeps background phase transitions from touching the card', () => {
+    const store = createTestStore()
+
+    setState(store, { state: 'checking' })
+    setState(store, { state: 'downloading', percent: 20, version: '1.2.0' })
     expect(store.getState().updateCardCollapsed).toBe(true)
+
+    setState(store, { state: 'downloaded', version: '1.2.0' })
+    expect(store.getState().updateCardCollapsed).toBe(true)
+
+    setState(store, { state: 'error', message: 'ENOSPC' })
+    expect(store.getState().updateCardCollapsed).toBe(true)
+  })
+
+  it('leaves a user-opened card open across background transitions', () => {
+    const store = createTestStore()
+
+    setState(store, { state: 'checking' })
+    setState(store, { state: 'downloading', percent: 20, version: '1.2.0' })
+    store.getState().setUpdateCardCollapsed(false)
 
     setState(store, { state: 'downloaded', version: '1.2.0' })
     expect(store.getState().updateCardCollapsed).toBe(false)
   })
 
-  it('re-surfaces the card when downloading transitions to error', () => {
+  it('re-surfaces the card on transitions within a user-initiated cycle', () => {
     const store = createTestStore()
 
-    setState(store, { state: 'downloading', percent: 80, version: '1.2.0' })
-    store.getState().setUpdateCardCollapsed(true)
+    setState(store, { state: 'checking', userInitiated: true })
+    expect(store.getState().updateCardCollapsed).toBe(false)
 
+    store.getState().setUpdateCardCollapsed(true)
+    setState(store, { state: 'available', version: '1.2.0', changelog: null })
+    expect(store.getState().updateCardCollapsed).toBe(false)
+
+    store.getState().setUpdateCardCollapsed(true)
     setState(store, { state: 'error', message: 'ENOSPC' })
     expect(store.getState().updateCardCollapsed).toBe(false)
   })
