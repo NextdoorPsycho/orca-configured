@@ -29,9 +29,9 @@ import { translate } from '@/i18n/i18n'
 export { getSetupGuideSidebarEntryReady, shouldShowSetupGuideEntry } from './SetupGuideSidebarEntry'
 
 export function shouldShowAgentsButton(
-  settings: Pick<GlobalSettings, 'experimentalActivity'> | null | undefined
+  settings: Pick<GlobalSettings, 'experimentalActivity' | 'showAgentsButton'> | null | undefined
 ): boolean {
-  return settings?.experimentalActivity === true
+  return settings?.experimentalActivity === true && settings.showAgentsButton !== false
 }
 
 export function shouldShowAgentDashboardButton(

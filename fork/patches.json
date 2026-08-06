@@ -1,13 +1,15 @@
 [
   {
     "file": "0001-experimental-toggles-unlimited-tab-width.patch",
-    "title": "Fork Changes settings pane + unlimited tab width toggle",
+    "title": "Fork Changes settings pane: unlimited tab width + sidebar entry toggles",
     "paths": [
       "src/shared/types.ts",
       "src/shared/constants.ts",
       "src/shared/constants.test.ts",
       "src/renderer/src/components/tab-bar/",
       "src/renderer/src/components/settings/",
+      "src/renderer/src/components/sidebar/SidebarNav.tsx",
+      "src/renderer/src/components/sidebar/SidebarNav.test.tsx",
       "src/renderer/src/hooks/useSettingsNavigationMetadata.ts",
       "src/renderer/src/hooks/useSettingsNavigationMetadata.test.ts",
       "src/renderer/src/lib/settings-navigation-types.ts",

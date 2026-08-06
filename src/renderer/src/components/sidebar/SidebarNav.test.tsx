@@ -233,6 +233,16 @@ describe('SidebarNav', () => {
     ).toBe(true)
   })
 
+  it('hides the Agents entry when the fork sidebar toggle turns it off', () => {
+    expect(
+      shouldShowAgentsButton({
+        ...getDefaultSettings('/tmp'),
+        experimentalActivity: true,
+        showAgentsButton: false
+      })
+    ).toBe(false)
+  })
+
   it('shows the Agent Dashboard entry only when its experiment is enabled', () => {
     expect(shouldShowAgentDashboardButton(null)).toBe(false)
     expect(shouldShowAgentDashboardButton({ experimentalAgentDashboardPopout: false })).toBe(false)

@@ -34,8 +34,56 @@ export const getForkChangesPaneSearchEntries = createLocalizedCatalog((): Settin
       )
     ],
     targetSectionId: 'fork-changes-unlimited-tab-width'
+  },
+  {
+    title: translate(
+      'auto.components.settings.forkChanges.search.sidebarTasksTitle',
+      'Tasks in sidebar'
+    ),
+    description: translate(
+      'auto.components.settings.forkChanges.search.sidebarTasksDescription',
+      'Show or hide the Tasks entry in the left sidebar.'
+    ),
+    keywords: sidebarEntryKeywords(),
+    targetSectionId: 'fork-changes-sidebar-tasks'
+  },
+  {
+    title: translate(
+      'auto.components.settings.forkChanges.search.sidebarAgentsTitle',
+      'Agents in sidebar'
+    ),
+    description: translate(
+      'auto.components.settings.forkChanges.search.sidebarAgentsDescription',
+      'Show or hide the Agents entry in the left sidebar.'
+    ),
+    keywords: sidebarEntryKeywords(),
+    targetSectionId: 'fork-changes-sidebar-agents'
+  },
+  {
+    title: translate(
+      'auto.components.settings.forkChanges.search.sidebarAutomationsTitle',
+      'Automations in sidebar'
+    ),
+    description: translate(
+      'auto.components.settings.forkChanges.search.sidebarAutomationsDescription',
+      'Show or hide the Automations entry in the left sidebar.'
+    ),
+    keywords: sidebarEntryKeywords(),
+    targetSectionId: 'fork-changes-sidebar-automations'
   }
 ])
+
+function sidebarEntryKeywords(): string[] {
+  return [
+    ...translateSearchKeyword('auto.components.settings.forkChanges.search.keywordFork', 'fork'),
+    ...translateSearchKeyword(
+      'auto.components.settings.forkChanges.search.keywordSidebar',
+      'sidebar'
+    ),
+    ...translateSearchKeyword('auto.components.settings.forkChanges.search.keywordHide', 'hide'),
+    ...translateSearchKeyword('auto.components.settings.forkChanges.search.keywordShow', 'show')
+  ]
+}
 
 // Why: title-keyed lookup throws loudly on a typo/rename instead of silently
 // matching the wrong (or empty) entry — mirrors experimental-search.ts.
@@ -47,12 +95,32 @@ function findEntry(title: string): SettingsSearchEntry {
   return entry
 }
 
-export function getForkChangesSearchEntry(): { unlimitedTabWidth: SettingsSearchEntry } {
+export function getForkChangesSearchEntry(): {
+  unlimitedTabWidth: SettingsSearchEntry
+  sidebarTasks: SettingsSearchEntry
+  sidebarAgents: SettingsSearchEntry
+  sidebarAutomations: SettingsSearchEntry
+} {
   return {
     unlimitedTabWidth: findEntry(
       translate(
         'auto.components.settings.forkChanges.search.unlimitedTabWidthTitle',
         'Unlimited tab width'
+      )
+    ),
+    sidebarTasks: findEntry(
+      translate('auto.components.settings.forkChanges.search.sidebarTasksTitle', 'Tasks in sidebar')
+    ),
+    sidebarAgents: findEntry(
+      translate(
+        'auto.components.settings.forkChanges.search.sidebarAgentsTitle',
+        'Agents in sidebar'
+      )
+    ),
+    sidebarAutomations: findEntry(
+      translate(
+        'auto.components.settings.forkChanges.search.sidebarAutomationsTitle',
+        'Automations in sidebar'
       )
     )
   } as const

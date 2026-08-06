@@ -10310,12 +10310,33 @@
             "title": "Unlimited tab width",
             "copy": "Remove the maximum width cap on terminal pane tabs so titles get all the space they need.",
             "toggleLabel": "Toggle unlimited tab width"
+          },
+          "sidebarTasks": {
+            "title": "Tasks in sidebar",
+            "copy": "Show the Tasks entry in the left sidebar.",
+            "toggleLabel": "Toggle the sidebar Tasks entry"
+          },
+          "sidebarAgents": {
+            "title": "Agents in sidebar",
+            "copy": "Show the Agents entry in the left sidebar while the Agents view is enabled.",
+            "toggleLabel": "Toggle the sidebar Agents entry"
+          },
+          "sidebarAutomations": {
+            "title": "Automations in sidebar",
+            "copy": "Show the Automations entry in the left sidebar.",
+            "toggleLabel": "Toggle the sidebar Automations entry"
           }
         },
         "forkChanges": {
           "search": {
             "unlimitedTabWidthTitle": "Unlimited tab width",
-            "unlimitedTabWidthDescription": "Remove the maximum width cap on terminal pane tabs so titles get all the space they need."
+            "unlimitedTabWidthDescription": "Remove the maximum width cap on terminal pane tabs so titles get all the space they need.",
+            "sidebarTasksTitle": "Tasks in sidebar",
+            "sidebarTasksDescription": "Show or hide the Tasks entry in the left sidebar.",
+            "sidebarAgentsTitle": "Agents in sidebar",
+            "sidebarAgentsDescription": "Show or hide the Agents entry in the left sidebar.",
+            "sidebarAutomationsTitle": "Automations in sidebar",
+            "sidebarAutomationsDescription": "Show or hide the Automations entry in the left sidebar."
           }
         }
       },
