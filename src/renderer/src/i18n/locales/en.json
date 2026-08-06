@@ -10328,6 +10328,11 @@
             "title": "Automations in sidebar",
             "copy": "Show the Automations entry in the left sidebar.",
             "toggleLabel": "Toggle the sidebar Automations entry"
+          },
+          "titlebarAppName": {
+            "title": "App name in titlebar",
+            "copy": "Show the Orca app name next to the window controls. Off reclaims the space.",
+            "toggleLabel": "Toggle the titlebar app name"
           }
         },
         "forkChanges": {
@@ -10339,7 +10344,9 @@
             "sidebarAgentsTitle": "Agents in sidebar",
             "sidebarAgentsDescription": "Show or hide the Agents entry in the left sidebar.",
             "sidebarAutomationsTitle": "Automations in sidebar",
-            "sidebarAutomationsDescription": "Show or hide the Automations entry in the left sidebar."
+            "sidebarAutomationsDescription": "Show or hide the Automations entry in the left sidebar.",
+            "titlebarAppNameTitle": "App name in titlebar",
+            "titlebarAppNameDescription": "Show the Orca app name next to the window controls."
           }
         }
       },

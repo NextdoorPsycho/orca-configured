@@ -37,6 +37,18 @@ export const getForkChangesPaneSearchEntries = createLocalizedCatalog((): Settin
   },
   {
     title: translate(
+      'auto.components.settings.forkChanges.search.titlebarAppNameTitle',
+      'App name in titlebar'
+    ),
+    description: translate(
+      'auto.components.settings.forkChanges.search.titlebarAppNameDescription',
+      'Show the Orca app name next to the window controls.'
+    ),
+    keywords: sidebarEntryKeywords(),
+    targetSectionId: 'fork-changes-titlebar-app-name'
+  },
+  {
+    title: translate(
       'auto.components.settings.forkChanges.search.sidebarTasksTitle',
       'Tasks in sidebar'
     ),
@@ -97,6 +109,7 @@ function findEntry(title: string): SettingsSearchEntry {
 
 export function getForkChangesSearchEntry(): {
   unlimitedTabWidth: SettingsSearchEntry
+  titlebarAppName: SettingsSearchEntry
   sidebarTasks: SettingsSearchEntry
   sidebarAgents: SettingsSearchEntry
   sidebarAutomations: SettingsSearchEntry
@@ -106,6 +119,12 @@ export function getForkChangesSearchEntry(): {
       translate(
         'auto.components.settings.forkChanges.search.unlimitedTabWidthTitle',
         'Unlimited tab width'
+      )
+    ),
+    titlebarAppName: findEntry(
+      translate(
+        'auto.components.settings.forkChanges.search.titlebarAppNameTitle',
+        'App name in titlebar'
       )
     ),
     sidebarTasks: findEntry(

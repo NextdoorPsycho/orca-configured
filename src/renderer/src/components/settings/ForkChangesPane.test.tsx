@@ -84,8 +84,8 @@ describe('ForkChangesPane', () => {
       expect(markup).toContain(title)
       expect(titles).toContain(title)
     }
-    // Three sidebar switches on; the only off switch is unlimited tab width.
-    expect(markup.match(/aria-checked="true"/g)).toHaveLength(3)
+    // Titlebar name + three sidebar switches on; the only off switch is unlimited tab width.
+    expect(markup.match(/aria-checked="true"/g)).toHaveLength(4)
     expect(markup.match(/aria-checked="false"/g)).toHaveLength(1)
   })
 
@@ -104,6 +104,12 @@ describe('ForkChangesPane', () => {
     root.unmount()
     return updateSettings
   }
+
+  it('turns the titlebar app name off through its switch', async () => {
+    expect(await clickSwitch('fork-changes-titlebar-app-name')).toHaveBeenCalledWith({
+      showTitlebarAppName: false
+    })
+  })
 
   it('turns each sidebar entry off through its switch', async () => {
     expect(await clickSwitch('fork-changes-sidebar-tasks')).toHaveBeenCalledWith({

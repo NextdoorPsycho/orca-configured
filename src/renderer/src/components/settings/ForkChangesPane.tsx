@@ -91,6 +91,26 @@ export function ForkChangesPane({
       />
 
       <ForkToggleRow
+        entry={entries.titlebarAppName}
+        id="fork-changes-titlebar-app-name"
+        label={translate(
+          'auto.components.settings.ForkChangesPane.titlebarAppName.title',
+          'App name in titlebar'
+        )}
+        copy={translate(
+          'auto.components.settings.ForkChangesPane.titlebarAppName.copy',
+          'Show the Orca app name next to the window controls. Off reclaims the space.'
+        )}
+        toggleLabel={translate(
+          'auto.components.settings.ForkChangesPane.titlebarAppName.toggleLabel',
+          'Toggle the titlebar app name'
+        )}
+        checked={settings.showTitlebarAppName !== false}
+        onToggle={(next) => updateSettings({ showTitlebarAppName: next })}
+        searchQuery={searchQuery}
+      />
+
+      <ForkToggleRow
         entry={entries.sidebarTasks}
         id="fork-changes-sidebar-tasks"
         label={translate(
