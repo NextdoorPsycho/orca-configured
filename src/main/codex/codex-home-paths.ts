@@ -57,13 +57,15 @@ export function getOrcaUserDataPath(): string {
   }
   // Why: CLI hook commands import this module outside Electron. Mirror the CLI
   // runtime metadata path so offline hook status/on/off uses the same userData.
+  // Fork: 'Orca Configured' — the official install's 'orca' dir belongs to the
+  // other app and must never be read or written from here.
   if (process.platform === 'darwin') {
-    return join(homedir(), 'Library', 'Application Support', 'orca')
+    return join(homedir(), 'Library', 'Application Support', 'Orca Configured')
   }
   if (process.platform === 'win32') {
-    return join(process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'), 'orca')
+    return join(process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'), 'Orca Configured')
   }
-  return join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'orca')
+  return join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'Orca Configured')
 }
 
 // Why: each managed home (the shared runtime mirror, or a per-account

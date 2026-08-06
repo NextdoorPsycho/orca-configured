@@ -15,12 +15,12 @@ function getUserDataDir(): string {
     // fallback so callers can resolve the path without the Electron runtime.
     const home = homedir()
     if (platform() === 'darwin') {
-      return join(home, 'Library', 'Application Support', 'Orca')
+      return join(home, 'Library', 'Application Support', 'Orca Configured')
     }
     if (platform() === 'win32') {
-      return join(process.env.APPDATA ?? home, 'Orca')
+      return join(process.env.APPDATA ?? home, 'Orca Configured')
     }
-    return join(home, '.config', 'Orca')
+    return join(home, '.config', 'Orca Configured')
   }
 }
 

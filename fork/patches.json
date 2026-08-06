@@ -39,8 +39,12 @@
       "resources/darwin/bin/orca",
       "native/computer-use-macos/Sources/OrcaComputerUseMacOS/main.swift",
       "native/computer-use-macos/Sources/OrcaComputerUseMacOSCore/AuthenticatedConnectionHangupMonitor.swift",
+      "src/main/codex/codex-home-paths.ts",
+      "src/main/command-code/command-code-managed-script.ts",
       "src/main/computer/macos-computer-use-permissions.ts",
       "src/main/ipc/notifications.ts",
+      "src/main/observability/logs-directory.ts",
+      "src/main/startup/fork-user-data-fallbacks.test.ts",
       "src/main/local-builds/local-build-candidate.test.ts",
       "src/main/local-builds/local-build-compatibility-contract.test.ts",
       "src/main/macos-tcc-prompt-watch.ts",
@@ -64,6 +68,7 @@
     "paths": [
       "src/main/startup/official-orca-import.ts",
       "src/main/startup/official-orca-import.test.ts",
+      "src/main/startup/official-orca-profile-copy.ts",
       "src/main/index.ts"
     ]
   }

@@ -4,7 +4,10 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
+  renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -109,6 +112,10 @@ function seedSourceProfile(): void {
   writeFileSync(join(sourceDir, 'Partitions', 'agent', 'Cache', 'data_1'), 'cache')
   mkdirSync(join(sourceDir, 'Partitions', 'agent', 'Local Storage'), { recursive: true })
   writeFileSync(join(sourceDir, 'Partitions', 'agent', 'Local Storage', 'leveldb'), 'storage')
+  // Live hook endpoint of the OTHER install (must be skipped); status beside it must copy.
+  mkdirSync(join(sourceDir, 'agent-hooks'), { recursive: true })
+  writeFileSync(join(sourceDir, 'agent-hooks', 'endpoint.env'), 'PORT=1')
+  writeFileSync(join(sourceDir, 'agent-hooks', 'last-status.json'), '{}')
 }
 
 function readMarker(): { decision: string; at: string; sourcePath: string } {
@@ -170,6 +177,94 @@ describe('maybeOfferOfficialOrcaImport', () => {
 
     // Atomic per-file copies must leave no temp remnants behind.
     expect(readdirSync(userDataDir).some((name) => name.endsWith('.orca-import-tmp'))).toBe(false)
+
+    // The other install's live hook endpoint must not come across; its status file must.
+    expect(existsSync(join(userDataDir, 'agent-hooks', 'endpoint.env'))).toBe(false)
+    expect(existsSync(join(userDataDir, 'agent-hooks', 'last-status.json'))).toBe(true)
+  })
+
+  it('rewrites source-profile absolute paths inside imported data files', async () => {
+    seedSourceProfile()
+    mkdirSync(join(sourceDir, 'profiles', 'local-default'), { recursive: true })
+    writeFileSync(
+      join(sourceDir, 'profiles', 'local-default', 'orca-data.json'),
+      JSON.stringify({
+        settings: {
+          theme: 'dark',
+          codexManagedAccounts: [
+            { id: 'a', managedHomePath: join(sourceDir, 'codex-accounts', 'a', 'home') }
+          ],
+          claudeManagedAccounts: [
+            { id: 'b', managedAuthPath: join(sourceDir, 'claude-accounts', 'b', 'auth') }
+          ]
+        }
+      })
+    )
+    mkdirSync(join(sourceDir, 'codex-runtime-home'), { recursive: true })
+    writeFileSync(
+      join(sourceDir, 'codex-runtime-home', 'trust-grant-ledger.json'),
+      JSON.stringify({
+        [join(sourceDir, 'codex-runtime-home', 'home', 'hooks.json')]: { granted: true }
+      })
+    )
+    showMessageBoxMock.mockResolvedValue({ response: 0 })
+
+    await maybeOfferOfficialOrcaImport(userDataDir)
+
+    const data = JSON.parse(
+      readFileSync(join(userDataDir, 'profiles', 'local-default', 'orca-data.json'), 'utf8')
+    ) as {
+      settings: {
+        theme: string
+        codexManagedAccounts: { managedHomePath: string }[]
+        claudeManagedAccounts: { managedAuthPath: string }[]
+      }
+    }
+    expect(data.settings.theme).toBe('dark')
+    expect(data.settings.codexManagedAccounts[0].managedHomePath).toBe(
+      join(userDataDir, 'codex-accounts', 'a', 'home')
+    )
+    expect(data.settings.claudeManagedAccounts[0].managedAuthPath).toBe(
+      join(userDataDir, 'claude-accounts', 'b', 'auth')
+    )
+    const ledger = JSON.parse(
+      readFileSync(join(userDataDir, 'codex-runtime-home', 'trust-grant-ledger.json'), 'utf8')
+    ) as Record<string, unknown>
+    expect(Object.keys(ledger)).toEqual([
+      join(userDataDir, 'codex-runtime-home', 'home', 'hooks.json')
+    ])
+  })
+
+  it('retargets symlinks that point inside the source profile', async () => {
+    seedSourceProfile()
+    mkdirSync(join(sourceDir, 'codex-runtime-home', 'releases', 'v1'), { recursive: true })
+    symlinkSync(
+      join(sourceDir, 'codex-runtime-home', 'releases', 'v1'),
+      join(sourceDir, 'codex-runtime-home', 'current')
+    )
+    showMessageBoxMock.mockResolvedValue({ response: 0 })
+
+    await maybeOfferOfficialOrcaImport(userDataDir)
+
+    expect(readlinkSync(join(userDataDir, 'codex-runtime-home', 'current'))).toBe(
+      join(userDataDir, 'codex-runtime-home', 'releases', 'v1')
+    )
+  })
+
+  it('finds a lowercase orca sibling directory when packaged without an override', async () => {
+    delete process.env.ORCA_FORK_IMPORT_SOURCE
+    electronState.isPackaged = true
+    const lowercaseSource = join(rootDir, 'orca-lowercase-probe')
+    mkdirSync(lowercaseSource, { recursive: true })
+    writeFileSync(join(lowercaseSource, 'orca-data.json'), '{"repos":[]}')
+    // Simulate a case-sensitive volume: only a lowercase 'orca' sibling exists.
+    renameSync(lowercaseSource, join(rootDir, 'orca'))
+    showMessageBoxMock.mockResolvedValue({ response: 0 })
+
+    const outcome = await maybeOfferOfficialOrcaImport(userDataDir)
+
+    expect(outcome).toMatchObject({ offered: true, decision: 'imported' })
+    expect(existsSync(join(userDataDir, 'orca-data.json'))).toBe(true)
   })
 
   it('refuses a source directory that contains the fork profile', async () => {

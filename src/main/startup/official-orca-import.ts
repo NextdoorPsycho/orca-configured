@@ -1,61 +1,15 @@
 import { app, dialog, type MessageBoxOptions } from 'electron'
-import {
-  constants as fsConstants,
-  copyFileSync,
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  readlinkSync,
-  renameSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-  type Dirent
-} from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import {
+  copyProfileTree,
+  DECISION_MARKER_FILE_NAME,
+  OFFICIAL_PROFILE_DIRECTORY_NAME,
+  remapImportedAbsolutePaths,
+  removeCoreRemnants
+} from './official-orca-profile-copy'
 
-/** Directory name of the official Orca install's userData, sibling of this fork's userData. */
-const OFFICIAL_PROFILE_DIRECTORY_NAME = 'Orca'
 const SOURCE_OVERRIDE_ENV = 'ORCA_FORK_IMPORT_SOURCE'
-const DECISION_MARKER_FILE_NAME = 'fork-import-decision.json'
-const ATOMIC_COPY_SUFFIX = '.orca-import-tmp'
-
-// Denylist grounded in a real ~/Library/Application Support/Orca listing (2026-08-05).
-// Skipped at ANY depth (Partitions/<name>/ repeats the Chromium layout per webview partition):
-const CHROMIUM_NOISE_ENTRY_NAMES: ReadonlySet<string> = new Set([
-  'Cache', // Chromium HTTP disk cache; regenerated on demand, large
-  'Code Cache', // V8/Blink compiled-code cache keyed to the source binary
-  'GPUCache', // GPU shader disk cache; invalid across binaries and driver updates
-  'DawnGraphiteCache', // WebGPU (Dawn) pipeline caches; same invalidation story
-  'DawnWebGPUCache',
-  'ShaderCache', // Chromium shader caches seen on Windows/Linux installs
-  'GrShaderCache',
-  'blob_storage', // per-session Blob spill area; orphaned without its owning session
-  'Crashpad', // crash-handler database describing the OTHER install's crashes
-  'SingletonLock', // Electron single-instance lock (symlink to host+pid); copying poisons instance detection
-  'SingletonCookie',
-  'SingletonSocket'
-])
-
-// Skipped only at the profile root; same-named entries deeper down are session content.
-const ROOT_ONLY_SKIP_ENTRY_NAMES: ReadonlySet<string> = new Set([
-  'logs', // the other install's main/renderer log files
-  '.updaterId', // per-install updater identity; copying makes this fork impersonate official Orca to its update feed
-  'orca-runtime.json', // live-process pointer (pid + IPC endpoints) of the running official app
-  'daemon', // running daemon pid/socket/auth token; sharing it would cross-wire the two installs
-  DECISION_MARKER_FILE_NAME // a source file must never clobber this fork's own decision marker
-])
-
-// Copied FIRST, before the bulky remainder: if the import is interrupted after these land,
-// the fork still has its core data, and the freshness gate keeps the prompt from re-arming
-// onto a half-seeded profile. A failure on any of these aborts the import entirely.
-const CORE_ROOT_ENTRY_PREFIXES: readonly string[] = [
-  'orca-data.json', // covers the .bak rotation ring too
-  'orca-profile-index.json',
-  'profiles'
-]
 
 export type ForkImportDecision = 'imported' | 'declined'
 
@@ -67,21 +21,6 @@ export type OfficialOrcaImportOutcome =
   | { offered: true; decision: 'declined' }
   | { offered: true; decision: 'imported'; copiedEntries: number; failedEntries: string[] }
   | { offered: true; decision: 'import-failed'; error: string }
-
-type ProfileCopyResult = {
-  copiedEntries: number
-  failedEntries: string[]
-}
-
-class CoreImportError extends Error {
-  constructor(relativePath: string, cause: unknown) {
-    super(
-      `Core data file could not be copied (${relativePath}): ${
-        cause instanceof Error ? cause.message : String(cause)
-      }`
-    )
-  }
-}
 
 function hasOrcaProfileData(directory: string): boolean {
   return (
@@ -171,118 +110,6 @@ function writeDecisionMarker(
   }
 }
 
-/** Copy-then-rename so a crash mid-copy can never leave a torn file at the real path. */
-function copyFileAtomically(sourcePath: string, targetPath: string): void {
-  const tmpPath = `${targetPath}${ATOMIC_COPY_SUFFIX}`
-  try {
-    // FICLONE: instant copy-on-write clones on APFS/Btrfs; falls back to a real copy elsewhere.
-    copyFileSync(sourcePath, tmpPath, fsConstants.COPYFILE_FICLONE)
-    renameSync(tmpPath, targetPath)
-  } catch (error) {
-    rmSync(tmpPath, { force: true })
-    throw error
-  }
-}
-
-function isCoreRootEntry(entryName: string, depth: number): boolean {
-  return depth === 0 && CORE_ROOT_ENTRY_PREFIXES.some((prefix) => entryName.startsWith(prefix))
-}
-
-function copyProfileEntry(
-  sourcePath: string,
-  targetPath: string,
-  entryName: string,
-  relativePath: string,
-  depth: number,
-  core: boolean,
-  result: ProfileCopyResult
-): void {
-  if (
-    CHROMIUM_NOISE_ENTRY_NAMES.has(entryName) ||
-    (depth === 0 && ROOT_ONLY_SKIP_ENTRY_NAMES.has(entryName))
-  ) {
-    return
-  }
-  try {
-    const stats = lstatSync(sourcePath)
-    if (stats.isDirectory()) {
-      mkdirSync(targetPath, { recursive: true })
-      const children: Dirent[] = readdirSync(sourcePath, { withFileTypes: true })
-      for (const child of children) {
-        copyProfileEntry(
-          join(sourcePath, child.name),
-          join(targetPath, child.name),
-          child.name,
-          join(relativePath, child.name),
-          depth + 1,
-          core,
-          result
-        )
-      }
-    } else if (stats.isFile()) {
-      copyFileAtomically(sourcePath, targetPath)
-      result.copiedEntries++
-    } else if (stats.isSymbolicLink()) {
-      const linkTarget = readlinkSync(sourcePath)
-      rmSync(targetPath, { force: true })
-      symlinkSync(linkTarget, targetPath)
-      result.copiedEntries++
-    }
-    // Sockets/FIFOs/devices fall through untouched: fs cannot copy them and they are per-process
-    // runtime state (e.g. o-<pid>-<hash>.sock at the profile root).
-  } catch (error) {
-    if (core) {
-      // A profile missing its core data is worse than no import at all — abort and re-arm.
-      throw error instanceof CoreImportError ? error : new CoreImportError(relativePath, error)
-    }
-    // Per-entry force/continue semantics: one unreadable file must not abort the whole import.
-    result.failedEntries.push(relativePath)
-    console.warn(
-      `[fork-import] Failed to copy ${relativePath}:`,
-      error instanceof Error ? error.message : String(error)
-    )
-  }
-}
-
-function copyProfileTree(sourceDir: string, targetDir: string): ProfileCopyResult {
-  const result: ProfileCopyResult = { copiedEntries: 0, failedEntries: [] }
-  mkdirSync(targetDir, { recursive: true })
-  // The top-level readdir is allowed to throw: with no entry list there is nothing to salvage.
-  const entries: Dirent[] = readdirSync(sourceDir, { withFileTypes: true })
-  // Core data first: an interruption during the bulky remainder still leaves a usable profile.
-  const ordered = [...entries].sort(
-    (a, b) => Number(isCoreRootEntry(b.name, 0)) - Number(isCoreRootEntry(a.name, 0))
-  )
-  for (const entry of ordered) {
-    copyProfileEntry(
-      join(sourceDir, entry.name),
-      join(targetDir, entry.name),
-      entry.name,
-      entry.name,
-      0,
-      isCoreRootEntry(entry.name, 0),
-      result
-    )
-  }
-  return result
-}
-
-/** Remove any core files a failed import may have already landed, so the retry starts clean. */
-function removeCoreRemnants(userDataPath: string): void {
-  try {
-    for (const entry of readdirSync(userDataPath)) {
-      if (isCoreRootEntry(entry, 0) || entry.endsWith(ATOMIC_COPY_SUFFIX)) {
-        rmSync(join(userDataPath, entry), { recursive: true, force: true })
-      }
-    }
-  } catch (error) {
-    console.warn(
-      '[fork-import] Failed to clean up after aborted import:',
-      error instanceof Error ? error.message : String(error)
-    )
-  }
-}
-
 /**
  * First-run prompt offering to copy an official Orca install's profile into this fork's fresh
  * userData. Must run after app-ready (native dialog) and before the persistence Store first
@@ -301,8 +128,16 @@ export async function maybeOfferOfficialOrcaImport(
   if (existsSync(join(userDataPath, DECISION_MARKER_FILE_NAME))) {
     return { offered: false, reason: 'already-decided' }
   }
+  // Probe both spellings: the official mac profile dir is literally lowercase 'orca'
+  // (Electron's pre-setName name), which only matches 'Orca' on case-insensitive volumes.
+  const siblingCandidates = [
+    join(dirname(userDataPath), OFFICIAL_PROFILE_DIRECTORY_NAME),
+    join(dirname(userDataPath), OFFICIAL_PROFILE_DIRECTORY_NAME.toLowerCase())
+  ]
   const sourcePath: string =
-    overrideSource ?? join(dirname(userDataPath), OFFICIAL_PROFILE_DIRECTORY_NAME)
+    overrideSource ??
+    siblingCandidates.find((candidate) => hasOrcaProfileData(candidate)) ??
+    siblingCandidates[0]
   // Containment either way makes the recursive copy re-encounter its own output.
   if (
     isPathContained(sourcePath, userDataPath) ||
@@ -323,6 +158,7 @@ export async function maybeOfferOfficialOrcaImport(
 
   try {
     const { copiedEntries, failedEntries } = copyProfileTree(sourcePath, userDataPath)
+    remapImportedAbsolutePaths(sourcePath, userDataPath)
     // Marker only after the copy: an interrupted import leaves either a fresh profile that
     // re-offers, or a core-complete profile the freshness gate treats as established.
     writeDecisionMarker(userDataPath, 'imported', sourcePath)
