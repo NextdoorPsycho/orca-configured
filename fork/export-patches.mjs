@@ -81,8 +81,9 @@ function requireNoUntracked(paths) {
 }
 
 // Main-only files that intentionally never ride in a patch (the release
-// pipeline itself, and the patch tooling CI restores from main).
-const MAIN_ONLY_PATH_PREFIXES = ['fork/', '.github/workflows/fork-']
+// pipeline itself, the patch tooling CI restores from main, and repo-agent
+// docs that only matter to people/agents working in THIS checkout).
+const MAIN_ONLY_PATH_PREFIXES = ['fork/', '.github/workflows/fork-', 'AGENTS.md']
 
 /** @param {string} file @param {string[]} specs @returns {boolean} */
 function isCoveredByPathspecs(file, specs) {

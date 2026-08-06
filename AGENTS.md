@@ -63,3 +63,76 @@ Source-control and review changes must consider GitLab and other supported git p
 ## GitHub CLI Usage
 
 Be mindful of the user's `gh` CLI API rate limit — batch requests where possible and avoid unnecessary calls. All code, commands, and scripts must be compatible with macOS, Linux, and Windows.
+
+# Fork Maintenance (orca-configured)
+
+This repo is Brian's personal fork of `stablyai/orca`. `main` = an upstream
+mirror plus committed fork changes; upstream code otherwise arrives only at
+BUILD time, when CI checks out the newest upstream release tag and applies
+`fork/patches/` on top. Full pipeline docs live in [`fork/README.md`](./fork/README.md).
+
+## The one workflow for any code change
+
+1. Edit on `main`, test-first, run the affected suites plus `pnpm typecheck`.
+2. If you touched paths no patch covers, extend the pathspecs in
+   `fork/patches.json` first (paths must stay DISJOINT across patches; add
+   `"required": true` only when a release missing the patch would be harmful —
+   today that is only 0002, the update-feed/identity repoint).
+3. `node fork/export-patches.mjs`, then commit the source AND `fork/patches/`
+   in the SAME push. CI gates every push: stale patches or main-side changes
+   covered by no pathspec turn the push red instead of silently building stale.
+4. Push (standing authorization exists for this repo). The push builds a
+   `…fork.<run>` release; installed clients see it via the in-app updater
+   within ~30 minutes. New upstream tags build verbatim on the half-hourly
+   schedule with no involvement.
+
+Versioning: new upstream tag → verbatim; fork rebuild of a prerelease base →
+`<v>.fork.<run>`; of a bare stable → `<nextPatch>-fork.<run>`. Ordering is
+self-tested in `fork/fork-release-version.mjs --test` — never hand-invent
+versions.
+
+## Updating the running app on this machine
+
+- PREFER the in-app updater (icon → Update → Restart): the app quits, the
+  daemon that owns every PTY/agent keeps running, the new app reconnects.
+- NEVER `pkill -f "Orca Configured.app"` — the daemon runs FROM the bundle
+  path and dies with the match, killing all agents ("terminal owner changed").
+- Manual swap, only when the updater path is unavailable: `osascript quit`,
+  wait patiently for the MAIN process alone to exit (no force-kill), replace
+  the bundle, relaunch. The daemon survives on the old inode and reconnects.
+
+## Fork identity invariants (violating these breaks updates)
+
+- `productName` (package.json) and `BASE_APP_NAME`
+  (src/main/startup/dev-instance-identity.ts) stay `Orca Configured` — they
+  drive the userData path and single-instance lock; `Orca` collides with an
+  official install.
+- NEVER set mac `executableName` — electron-builder renames the whole bundle
+  to `Orca.app`. The CLI shim (`resources/darwin/bin/orca`) resolves
+  `CFBundleExecutable` at runtime instead.
+- Artifact file names stay exactly as configured — every `latest*.yml`
+  updater manifest references them, and the in-app preflight 404s forever on
+  a rename. The mac zip name is pinned space-free for the same reason.
+- macOS builds sign in sign-only mode (`ORCA_MAC_SIGNED=1`, CSC_LINK secret;
+  no notarization). The Apple Development cert expires 2026-09-20; renewal =
+  new cert in Xcode, re-export the secret, one manual install, one Keychain
+  "Always Allow", one TCC re-grant round.
+- Dev channels (hourly/adhoc) stay disabled; upstream's repos serve builds
+  Squirrel cannot swap onto this bundle identity.
+
+## Fork UX conventions
+
+- User-facing fork tweaks are default-off (or default-matching-upstream)
+  toggles in the Settings > Fork Changes pane — follow the ForkToggleRow +
+  fork-changes-search.ts pattern, and register new section ids in
+  SETTINGS_NAV_TARGETS or Cmd+J rejects them.
+- Update surfacing stays QUIET: background update activity may only reach the
+  user through the status-bar indicator; the update card renders nothing while
+  collapsed and only user-initiated checks un-collapse it.
+
+## Known machine-local test failures (not code bugs)
+
+`wsl-hook-relay-live.integration.test.ts` (env-dependent), the two
+`agent-exec-handler` env assertions (Orca terminals inject `GIT_CONFIG_*`),
+and `cross-version-terminal-wire` (needs upstream release tags in the clone).
+All pass in CI; do not chase them locally.
