@@ -76,10 +76,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
+      # tag = the RELEASE tag in this repo (fork-suffixed on rebuilds);
+      # upstream_tag = the upstream source tag the build checks out.
       tag: ${{ steps.pick.outputs.tag }}
+      upstream_tag: ${{ steps.pick.outputs.upstream_tag }}
+      version: ${{ steps.pick.outputs.version }}
       proceed: ${{ steps.pick.outputs.proceed }}
       upstream_url: ${{ steps.pick.outputs.upstream_url }}
     steps:
+      - name: Checkout (fork version tooling)
+        uses: actions/checkout@v6
+
       - name: Pick upstream tag, dedupe, and open a fresh draft
         id: pick
         env:
@@ -116,35 +123,49 @@ jobs:
           published_count="$(jq -r --arg tag "$tag" '[.[] | select(.tag_name == $tag and (.draft | not))] | length' <<<"$ours_json")"
           any_count="$(jq -r --arg tag "$tag" '[.[] | select(.tag_name == $tag)] | length' <<<"$ours_json")"
 
+          upstream_version="${tag#v}"
           proceed=true
-          if [ "$published_count" != "0" ] && [ "$rebuild" != "true" ]; then
-            proceed=false
-            echo "Release $tag is already published in $GITHUB_REPOSITORY; skipping."
-          fi
-
-          if [ "$proceed" = "true" ]; then
-            if [ "$any_count" != "0" ]; then
-              # Deterministic rebuild: same tag, delete release(s) + tag, recreate.
-              # Deletion is per-release-id because drafts can duplicate a tag_name,
-              # and the tag ref is removed tolerantly: leftover DRAFTS never
-              # materialized refs/tags/<tag>, so gh's --cleanup-tag would 422 and
-              # fail the exact run that should recover a failed build.
+          if [ "$rebuild" = "true" ]; then
+            # Fork rebuild (patch push or force): mint a NEW fork-suffixed
+            # version and tag, semver-above the verbatim build so installed
+            # clients actually update, below upstream's next tag so upstream
+            # releases still win. Fresh tag every time — nothing to delete.
+            version="$(node fork/fork-release-version.mjs "$upstream_version" rebuild "$GITHUB_RUN_NUMBER")"
+            release_tag="v$version"
+          else
+            # Schedule / plain dispatch: only NEW upstream tags build; the
+            # verbatim version keeps the fork mirroring upstream exactly.
+            version="$upstream_version"
+            release_tag="$tag"
+            if [ "$published_count" != "0" ]; then
+              proceed=false
+              echo "Release $tag is already published in $GITHUB_REPOSITORY; skipping."
+            elif [ "$any_count" != "0" ]; then
+              # A leftover DRAFT from a failed build: delete per-release-id
+              # (drafts can duplicate a tag_name) and remove the tag ref
+              # tolerantly — drafts never materialized refs/tags/<tag>, so
+              # gh's --cleanup-tag would 422 and fail this recovery run.
               jq -r --arg tag "$tag" '.[] | select(.tag_name == $tag) | .id' <<<"$ours_json" |
                 while read -r release_id; do
                   gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$release_id"
                 done
               gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" || true
             fi
+          fi
+
+          if [ "$proceed" = "true" ]; then
             # Draft target: our main HEAD. GitHub only materializes the tag at
             # publish time, so the tag in this repo ends up on our main — the
             # updater only consumes release assets, never the tag's tree.
-            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --draft \
-              --target "$GITHUB_SHA" --title "$tag" \
+            gh release create "$release_tag" --repo "$GITHUB_REPOSITORY" --draft \
+              --target "$GITHUB_SHA" --title "$release_tag" \
               --notes "Fork build of upstream $upstream_url in progress."
           fi
 
           {
-            echo "tag=$tag"
+            echo "tag=${release_tag:-$tag}"
+            echo "upstream_tag=$tag"
+            echo "version=${version:-$upstream_version}"
             echo "proceed=$proceed"
             echo "upstream_url=$upstream_url"
           } >>"$GITHUB_OUTPUT"
@@ -200,7 +221,7 @@ jobs:
       - name: Fetch upstream tag and switch to it
         shell: bash
         env:
-          TAG: ${{ needs.resolve.outputs.tag }}
+          TAG: ${{ needs.resolve.outputs.upstream_tag }}
         run: |
           set -euo pipefail
           git remote add upstream https://github.com/stablyai/orca
@@ -232,6 +253,22 @@ jobs:
             echo "::error::apply-patches hit a hard error"
             exit 1
           fi
+
+      # Fork rebuilds ship a fork-suffixed version (see fork/fork-release-version.mjs);
+      # package.json drives the packaged version and every latest*.yml manifest.
+      - name: Stamp fork version
+        shell: bash
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs = require("fs");
+            const p = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            p.version = process.env.VERSION;
+            fs.writeFileSync("package.json", JSON.stringify(p, null, 2) + "\n");
+          '
+          echo "Building version $VERSION"
 
       - name: Upload apply report
         if: always()
@@ -300,12 +337,14 @@ jobs:
           TAG: ${{ needs.resolve.outputs.tag }}
         run: |
           set -euo pipefail
-          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+(\.[0-9A-Za-z]+)?$ ]]; then
+          # rc covers upstream rc tags plus fork rebuild tags (…-rc.N.fork.M and …-fork.M):
+          # every fork-suffixed version is prerelease-shaped by design.
+          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-(rc|fork)\.[0-9]+(\.[0-9A-Za-z.]+)?$ ]]; then
             identity=rc
           elif [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             identity=stable
           else
-            echo "::error::Tag $TAG does not match the stable or rc pattern"
+            echo "::error::Tag $TAG does not match the stable, rc, or fork pattern"
             exit 1
           fi
           echo "identity=$identity" >>"$GITHUB_OUTPUT"

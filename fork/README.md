@@ -30,7 +30,36 @@ would silently migrate every install back to upstream's update feed.
 2. Add an entry to `fork/patches.json`: `{ "file": "000N-name.patch", "title": "...", "paths": [ ... ] }` (add `"required": true` only if a release without the patch would be actively harmful). Paths must stay disjoint across patches — rollback of a failed patch restores its paths to HEAD.
 3. Export and commit: `node fork/export-patches.mjs` then commit `fork/`.
    `node fork/export-patches.mjs --check` verifies the committed patches are
-   current (CI runs this on every push touching `fork/**`).
+   current (`fork-patch-drift.yml` runs it on EVERY push, so a source-only
+   push that skipped the export turns red instead of silently building stale).
+
+## The self-improvement loop
+
+Day-to-day flow for changing the fork from inside the fork:
+
+1. Edit source on `main`, run the tests, commit.
+2. `node fork/export-patches.mjs` (updates the patch whose pathspecs cover
+   your files — extend `fork/patches.json` first if you touched new paths),
+   commit `fork/patches/`, and push both commits together.
+3. The push (touching `fork/**`) triggers `fork-release.yml` as a REBUILD:
+   it builds the current upstream tag + your patches and publishes a release
+   versioned above the one you're running (`fork/fork-release-version.mjs`:
+   `1.4.174-rc.0` becomes `1.4.174-rc.0.fork.<run>`, a bare stable `1.4.175`
+   becomes `1.4.176-fork.<run>` — always below upstream's next tag, so
+   upstream releases still supersede fork rebuilds).
+4. The running app's daily check (or Check for Updates) sees the higher
+   version on this repo's feed, downloads, and installs when YOU choose
+   Restart — agents and terminals resume through Orca's normal session
+   restore, the same as any official update.
+
+New upstream releases keep flowing on the schedule with verbatim versions;
+patch failures still notify via issues (the feed/identity patch hard-fails).
+
+One narrow corner: running a BARE-STABLE verbatim build (upstream mostly ships
+rc tags, so this is rare) with the release channel on Stable will skip
+prerelease-shaped fork rebuilds until the next upstream tag arrives. Set
+Settings > Release channel > RC if you land on a stable build and want fork
+rebuilds immediately; rc/fork installs auto-include prereleases already.
 
 ## Manual builds
 

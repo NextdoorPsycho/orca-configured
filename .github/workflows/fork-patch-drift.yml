@@ -1,0 +1,31 @@
+name: fork-patch-drift
+
+# Runs on EVERY push to main (fork-release.yml only rebuilds on fork/** pushes):
+# a source-only push that forgot `node fork/export-patches.mjs` would otherwise
+# leave the patch set silently stale — releases would build without the change.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # export-patches diffs against fork/upstream-base, which needs history.
+          fetch-depth: 0
+
+      - name: Verify patches match main
+        run: node fork/export-patches.mjs --check
+
+      - name: Verify fork version scheme
+        run: |
+          corepack enable pnpm >/dev/null 2>&1 || true
+          npm install --no-save semver >/dev/null 2>&1
+          node fork/fork-release-version.mjs --test
