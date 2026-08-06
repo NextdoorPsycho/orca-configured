@@ -1289,10 +1289,45 @@ index 96bf163e54e9bbd4ea71e6de8d59b6dd852b2596..7b8f123d599ecd83c8a95fce89d3faa3
    }
  
 diff --git a/src/renderer/src/components/UpdateCard.error-card.test.tsx b/src/renderer/src/components/UpdateCard.error-card.test.tsx
-index 4e4aec4d2b5e122ffb1d4dabbed139ef1f8e1d83..9c14f7f93533c20dc2c9b5ed1174934016a02a57 100644
+index 4e4aec4d2b5e122ffb1d4dabbed139ef1f8e1d83..fa4fd9424c4467ba44f247703fba2f33c9324e10 100644
 --- a/src/renderer/src/components/UpdateCard.error-card.test.tsx
 +++ b/src/renderer/src/components/UpdateCard.error-card.test.tsx
-@@ -103,7 +103,9 @@ describe('UpdateCard Windows signature failures', () => {
+@@ -90,6 +90,34 @@ afterEach(() => {
+   useAppStore.setState(useAppStore.getInitialState(), true)
+ })
+ 
++describe('UpdateCard collapsed quiet mode', () => {
++  // Fork: collapsed means NOTHING renders — including 'available', upstream's
++  // primary announcement card. The status-bar indicator is the only signal.
++  it('renders nothing while collapsed, for every state', () => {
++    useAppStore.setState({
++      updateStatus: { state: 'available', version: '1.4.200', changelog: null },
++      updateChangelog: null,
++      dismissedUpdateVersion: null,
++      updateCardCollapsed: true,
++      updateReassuranceSeen: true
++    })
++    const { container } = render(<UpdateCard />)
++    expect(container.innerHTML).toBe('')
++  })
++
++  it('renders the available card once the user opens it', () => {
++    useAppStore.setState({
++      updateStatus: { state: 'available', version: '1.4.200', changelog: null },
++      updateChangelog: null,
++      dismissedUpdateVersion: null,
++      updateCardCollapsed: false,
++      updateReassuranceSeen: true
++    })
++    const { container } = render(<UpdateCard />)
++    expect(container.innerHTML).not.toBe('')
++  })
++})
++
+ describe('UpdateCard Windows signature failures', () => {
+   it('does not offer the rejected version as a manual publisher-check bypass', () => {
+     const message =
+@@ -103,7 +131,9 @@ describe('UpdateCard Windows signature failures', () => {
      expect(screen.queryByText(message)).toBeNull()
  
      fireEvent.click(screen.getByRole('button', { name: 'Check official releases' }))
@@ -1303,7 +1338,7 @@ index 4e4aec4d2b5e122ffb1d4dabbed139ef1f8e1d83..9c14f7f93533c20dc2c9b5ed11749340
      expect(openUrl).not.toHaveBeenCalledWith(expect.stringContaining('/tag/'))
    })
  
-@@ -259,7 +261,9 @@ describe('UpdateCard Linux package-install recovery', () => {
+@@ -259,7 +289,9 @@ describe('UpdateCard Linux package-install recovery', () => {
      await flushActions()
  
      fireEvent.click(screen.getByRole('button', { name: 'Download Manually' }))

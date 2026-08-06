@@ -105,6 +105,26 @@ index 6eed56fad3eafbbf566a643a0243d2953c04b777..b1bc9358d7ebc178229555af6516b866
      setState(store, { state: 'error', message: 'ENOSPC' })
      expect(store.getState().updateCardCollapsed).toBe(false)
    })
+diff --git a/src/renderer/src/components/UpdateCard.tsx b/src/renderer/src/components/UpdateCard.tsx
+index b47e9fedd72640b584d1b28df1db3aa1758fc122..efac7f8e2bac76473b161b0288588662d2232c93 100644
+--- a/src/renderer/src/components/UpdateCard.tsx
++++ b/src/renderer/src/components/UpdateCard.tsx
+@@ -231,10 +231,11 @@ export function UpdateCard() {
+     }
+   }
+ 
+-  if (
+-    collapsed &&
+-    (status.state === 'downloading' || status.state === 'downloaded' || status.state === 'error')
+-  ) {
++  // Fork: collapsed suppresses EVERY state — upstream only gated in-flight
++  // phases, so an 'available' card still popped over quiet mode. The
++  // status-bar indicator is the sole ambient signal; user-initiated checks
++  // un-collapse via the store, and the indicator click opens this card.
++  if (collapsed) {
+     return null
+   }
+ 
 diff --git a/src/renderer/src/components/status-bar/UpdateStatusSegment.test.tsx b/src/renderer/src/components/status-bar/UpdateStatusSegment.test.tsx
 new file mode 100644
 index 0000000000000000000000000000000000000000..98c78c558636264f367b27e01fe2de7e4ae704fa
