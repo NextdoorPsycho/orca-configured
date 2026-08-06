@@ -10,7 +10,7 @@ index f91b51c24eecfc4bde00196075f9dcb3a2f3f8b1..4792873329399cd9ebc5ecb0aa070cbc
 +repo: orca-configured
  updaterCacheDirName: orca-updater
 diff --git a/config/electron-builder.config.cjs b/config/electron-builder.config.cjs
-index e581cd7a44ed5d3afe233a423f97c090bef2fd3a..06a79167483f430aace49bef8270816b46e22806 100644
+index e581cd7a44ed5d3afe233a423f97c090bef2fd3a..58022db44189452a7ce628270ae2bf48d7335d1c 100644
 --- a/config/electron-builder.config.cjs
 +++ b/config/electron-builder.config.cjs
 @@ -35,7 +35,7 @@ const devChannelBuildVersion = isMacHourly
@@ -45,7 +45,17 @@ index e581cd7a44ed5d3afe233a423f97c090bef2fd3a..06a79167483f430aace49bef8270816b
      extraResources: [
        ...commonExtraResources,
        ...createPackagedRuntimeNodeModuleResources('win32'),
-@@ -391,7 +388,11 @@ module.exports = {
+@@ -312,6 +309,9 @@ module.exports = {
+     include: resolve(__dirname, 'nsis', 'daemon-host-uninstall.nsh')
+   },
+   mac: {
++    // No executableName pin: on mac it renames the whole bundle to Orca.app,
++    // colliding with an official install. The CLI shim reads CFBundleExecutable
++    // at runtime instead of assuming Contents/MacOS/Orca.
+     icon: 'resources/build/icon.icns',
+     entitlements: 'resources/build/entitlements.mac.plist',
+     entitlementsInherit: 'resources/build/entitlements.mac.plist',
+@@ -391,7 +391,11 @@ module.exports = {
          target: 'zip',
          arch: ['x64', 'arm64']
        }
@@ -58,7 +68,7 @@ index e581cd7a44ed5d3afe233a423f97c090bef2fd3a..06a79167483f430aace49bef8270816b
    },
    // Why: release builds should fail if signing is unavailable instead of
    // silently downgrading to ad-hoc artifacts that look shippable in CI logs.
-@@ -432,7 +433,7 @@ module.exports = {
+@@ -432,7 +436,7 @@ module.exports = {
        featureWallResources
      ],
      target: ['AppImage', 'deb'],
@@ -67,7 +77,7 @@ index e581cd7a44ed5d3afe233a423f97c090bef2fd3a..06a79167483f430aace49bef8270816b
      category: 'Utility'
    },
    appImage: {
-@@ -487,8 +488,8 @@ module.exports = {
+@@ -487,8 +491,8 @@ module.exports = {
    npmRebuild: true,
    publish: {
      provider: 'github',
@@ -106,10 +116,16 @@ index e8150e32b6f1c741faf1f671b5435b8614e602d2..eaf031f22a7726a2af3b4b26fbf7b3de
  // Why: dev launches only need the host architecture; release builds ship a
  // universal binary matching the app's x64 + arm64 targets.
 diff --git a/config/scripts/electron-builder-config.test.mjs b/config/scripts/electron-builder-config.test.mjs
-index 3227d957b24ff054f17e25d7b8fa36679eaa9c68..603475d2ecb18481ef9269882c6da6b15b29ff83 100644
+index 3227d957b24ff054f17e25d7b8fa36679eaa9c68..047cbe8f7582d7b7a55b7b9058ded9523ce711cc 100644
 --- a/config/scripts/electron-builder-config.test.mjs
 +++ b/config/scripts/electron-builder-config.test.mjs
-@@ -62,6 +62,12 @@ describe('electron-builder config', () => {
+@@ -1,4 +1,5 @@
+ import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
++import { readFileSync } from 'node:fs'
+ import { createRequire } from 'node:module'
+ import { tmpdir } from 'node:os'
+ import { join } from 'node:path'
+@@ -62,6 +63,21 @@ describe('electron-builder config', () => {
      )
    })
  
@@ -119,10 +135,19 @@ index 3227d957b24ff054f17e25d7b8fa36679eaa9c68..603475d2ecb18481ef9269882c6da6b1
 +    expect(electronBuilderConfig.mac.artifactName).toBe('orca-macos-${version}-${arch}-mac.${ext}')
 +  })
 +
++  it('never pins a mac executableName, which would rename the bundle onto Orca.app', () => {
++    // Why: mac executableName renames the .app itself, colliding with an official
++    // Orca install; the CLI shim instead resolves CFBundleExecutable at runtime.
++    expect(electronBuilderConfig.mac.executableName).toBeUndefined()
++    const shim = readFileSync(join(import.meta.dirname, '..', '..', 'resources', 'darwin', 'bin', 'orca'), 'utf8')
++    expect(shim).toContain('CFBundleExecutable')
++    expect(shim).not.toContain('ELECTRON="$CONTENTS/MacOS/Orca"')
++  })
++
    it('excludes repo-only source trees from app.asar', () => {
      expect(electronBuilderConfig.files).toEqual(
        expect.arrayContaining([
-@@ -305,12 +311,12 @@ describe('electron-builder config', () => {
+@@ -305,12 +321,12 @@ describe('electron-builder config', () => {
  
    // Why: Squirrel.Mac swaps the .app in place only when the replacement carries the
    // same bundle id and a valid Developer ID signature. A hourly built on the local
@@ -137,7 +162,7 @@ index 3227d957b24ff054f17e25d7b8fa36679eaa9c68..603475d2ecb18481ef9269882c6da6b1
        expect(config.mac.hardenedRuntime).toBe(true)
        expect(config.forceCodeSigning).toBe(true)
      })
-@@ -338,7 +344,7 @@ describe('electron-builder config', () => {
+@@ -338,7 +354,7 @@ describe('electron-builder config', () => {
        expect(config.publish).toMatchObject({ repo: 'orca-hourly', releaseType: 'prerelease' })
      })
      expect(electronBuilderConfig.publish).toMatchObject({
@@ -146,7 +171,7 @@ index 3227d957b24ff054f17e25d7b8fa36679eaa9c68..603475d2ecb18481ef9269882c6da6b1
        releaseType: 'release'
      })
    })
-@@ -357,7 +363,7 @@ describe('electron-builder config', () => {
+@@ -357,7 +373,7 @@ describe('electron-builder config', () => {
    // argument apply. Only the destination repo differs.
    it('builds adhoc artifacts with the release identity and its own repo', () => {
      withAdhocEnv((config) => {
@@ -346,6 +371,22 @@ index d800838281bbed47b722f02ea815615ca1979f01..bca021beb272706dae3674d434b217c0
    "reactDoctor": {
      "rules": {
        "react-doctor/js-combine-iterations": "off"
+diff --git a/resources/darwin/bin/orca b/resources/darwin/bin/orca
+index b5488efe245ee96ded7eb60bd9439c958e09915d..7e877c31d125c658c85e0c5fd35360a372656ba7 100755
+--- a/resources/darwin/bin/orca
++++ b/resources/darwin/bin/orca
+@@ -19,7 +19,10 @@ if [ -z "$APP_PATH" ]; then
+ fi
+ 
+ CONTENTS="$APP_PATH/Contents"
+-ELECTRON="$CONTENTS/MacOS/Orca"
++# Fork: the executable follows productName ('Orca Configured'), so resolve it from
++# the bundle instead of assuming upstream's Contents/MacOS/Orca.
++EXECUTABLE="$(plutil -extract CFBundleExecutable raw "$CONTENTS/Info.plist" 2>/dev/null || echo "Orca")"
++ELECTRON="$CONTENTS/MacOS/$EXECUTABLE"
+ # Why: Orca packages the CLI entrypoint outside app.asar so the public shell
+ # command can execute it directly with ELECTRON_RUN_AS_NODE, mirroring VS Code's
+ # launcher model instead of requiring a separate npm-distributed binary.
 diff --git a/src/main/computer/macos-computer-use-permissions.ts b/src/main/computer/macos-computer-use-permissions.ts
 index 36d7cedf59d7bcb34e5fd23dc54e9bf2701691b7..6624437fe473bbea1d584159ddf29620411658be 100644
 --- a/src/main/computer/macos-computer-use-permissions.ts

@@ -62,12 +62,6 @@ describe('electron-builder config', () => {
     )
   })
 
-  it('pins a space-free mac zip artifact name so manifests, uploads, and probes agree', () => {
-    // Why: productName contains a space; the default zip name would diverge between
-    // latest-mac.yml (safe name, dashes) and the GitHub asset (dots) -> permanent 404s.
-    expect(electronBuilderConfig.mac.artifactName).toBe('orca-macos-${version}-${arch}-mac.${ext}')
-  })
-
   it('excludes repo-only source trees from app.asar', () => {
     expect(electronBuilderConfig.files).toEqual(
       expect.arrayContaining([

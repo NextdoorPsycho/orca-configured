@@ -309,6 +309,9 @@ module.exports = {
     include: resolve(__dirname, 'nsis', 'daemon-host-uninstall.nsh')
   },
   mac: {
+    // No executableName pin: on mac it renames the whole bundle to Orca.app,
+    // colliding with an official install. The CLI shim reads CFBundleExecutable
+    // at runtime instead of assuming Contents/MacOS/Orca.
     icon: 'resources/build/icon.icns',
     entitlements: 'resources/build/entitlements.mac.plist',
     entitlementsInherit: 'resources/build/entitlements.mac.plist',
