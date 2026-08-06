@@ -1,0 +1,727 @@
+diff --git a/src/main/index.ts b/src/main/index.ts
+index 61c7d799f94b84fc293411488ebf452b55bdf49b..6b3fda8f3d1c0e5c90308eedf6be42a873d2322b 100644
+--- a/src/main/index.ts
++++ b/src/main/index.ts
+@@ -151,6 +151,7 @@ import {
+ } from './startup/dev-education-suppression'
+ import { maybeRedirectAppImageCliLaunch } from './startup/appimage-cli-redirect'
+ import { maybeRedirectPackagedCliEntryLaunch } from './startup/packaged-cli-entry-redirect'
++import { maybeOfferOfficialOrcaImport } from './startup/official-orca-import'
+ import { startFirstWindowStartupServices } from './startup/first-window-startup-services'
+ import { recoverLegacyWorkerTerminalsForRendererStartup } from './startup/legacy-worker-renderer-recovery'
+ import { createWslCliReconciliationStartupBarrier } from './startup/wsl-cli-reconciliation-startup-barrier'
+@@ -2061,6 +2062,12 @@ void app.whenReady().then(async () => {
+     managedWslCliReconciliationReady
+   )
+ 
++  // Why before ensureActiveOrcaProfile/new Store: an accepted import seeds the orca-data.json
++  // the Store load reads. Never in serve mode: headless hosts cannot dismiss a native dialog,
++  // and awaiting one would hang startup before the serve readiness signal is emitted.
++  if (!isServeMode) {
++    await maybeOfferOfficialOrcaImport(getCanonicalUserDataPath())
++  }
+   const activeOrcaProfile = ensureActiveOrcaProfile()
+   store = new Store({ dataFile: activeOrcaProfile.dataFile })
+   wslHookRelayManager.setManagedHookSettingsResolver(() => store?.getSettings() ?? null)
+diff --git a/src/main/startup/official-orca-import.test.ts b/src/main/startup/official-orca-import.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..e23d3b469ade2aafde0bcec2a459df7a0fc35407
+--- /dev/null
++++ b/src/main/startup/official-orca-import.test.ts
+@@ -0,0 +1,346 @@
++import {
++  existsSync,
++  mkdirSync,
++  mkdtempSync,
++  readdirSync,
++  readFileSync,
++  rmSync,
++  writeFileSync
++} from 'node:fs'
++import { tmpdir } from 'node:os'
++import { join } from 'node:path'
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
++import type * as NodeFs from 'node:fs'
++
++const { electronState, showMessageBoxMock, fsMockState } = vi.hoisted(() => ({
++  electronState: { isPackaged: false },
++  showMessageBoxMock: vi.fn(),
++  fsMockState: { failNextReaddir: false, failCopyFileFor: null as string | null }
++}))
++
++vi.mock('electron', () => ({
++  app: {
++    get isPackaged(): boolean {
++      return electronState.isPackaged
++    }
++  },
++  dialog: { showMessageBox: showMessageBoxMock }
++}))
++
++// Why wrap readdirSync: the only deterministic cross-platform way to make the top-level copy fail
++// (chmod 0 is a no-op on Windows). The flag is off for every other call, which passes through.
++vi.mock('node:fs', async (importOriginal) => {
++  const actual = await importOriginal<typeof NodeFs>()
++  // Cast through unknown: readdirSync's overloads defeat Parameters<>/ReturnType<> passthrough typing.
++  const passthrough = actual.readdirSync as unknown as (...inner: unknown[]) => unknown
++  const readdirSyncWrapper = ((...args: unknown[]): unknown => {
++    if (fsMockState.failNextReaddir) {
++      fsMockState.failNextReaddir = false
++      throw new Error('simulated I/O failure')
++    }
++    return passthrough(...args)
++  }) as unknown as typeof actual.readdirSync
++  const copyPassthrough = actual.copyFileSync as unknown as (...inner: unknown[]) => unknown
++  const copyFileSyncWrapper = ((...args: unknown[]): unknown => {
++    if (fsMockState.failCopyFileFor && String(args[0]).includes(fsMockState.failCopyFileFor)) {
++      throw new Error(`simulated copy failure for ${fsMockState.failCopyFileFor}`)
++    }
++    return copyPassthrough(...args)
++  }) as unknown as typeof actual.copyFileSync
++  return {
++    ...actual,
++    readdirSync: readdirSyncWrapper,
++    copyFileSync: copyFileSyncWrapper
++  }
++})
++
++import { maybeOfferOfficialOrcaImport } from './official-orca-import'
++import type { OfficialOrcaImportOutcome } from './official-orca-import'
++
++const MARKER_FILE = 'fork-import-decision.json'
++
++let rootDir: string
++let userDataDir: string
++let sourceDir: string
++
++beforeEach(() => {
++  rootDir = mkdtempSync(join(tmpdir(), 'orca-fork-import-'))
++  userDataDir = join(rootDir, 'Orca Configured')
++  sourceDir = join(rootDir, 'Orca')
++  mkdirSync(userDataDir, { recursive: true })
++  electronState.isPackaged = false
++  fsMockState.failNextReaddir = false
++  fsMockState.failCopyFileFor = null
++  process.env.ORCA_FORK_IMPORT_SOURCE = sourceDir
++  showMessageBoxMock.mockReset()
++  showMessageBoxMock.mockResolvedValue({ response: 0 })
++})
++
++afterEach(() => {
++  delete process.env.ORCA_FORK_IMPORT_SOURCE
++  rmSync(rootDir, { recursive: true, force: true })
++})
++
++/** Mirrors the real official-Orca profile layout observed on a live install. */
++function seedSourceProfile(): void {
++  mkdirSync(sourceDir, { recursive: true })
++  writeFileSync(join(sourceDir, 'orca-data.json'), '{"repos":[]}')
++  writeFileSync(join(sourceDir, 'orca-stats.json'), '{}')
++  writeFileSync(join(sourceDir, 'orca-profile-index.json'), '{"profiles":[]}')
++  mkdirSync(join(sourceDir, 'terminal-history'), { recursive: true })
++  writeFileSync(join(sourceDir, 'terminal-history', 'session.jsonl'), 'history')
++  mkdirSync(join(sourceDir, 'Cache'), { recursive: true })
++  writeFileSync(join(sourceDir, 'Cache', 'data_0'), 'cache')
++  mkdirSync(join(sourceDir, 'Code Cache'), { recursive: true })
++  writeFileSync(join(sourceDir, 'Code Cache', 'index'), 'cache')
++  mkdirSync(join(sourceDir, 'GPUCache'), { recursive: true })
++  writeFileSync(join(sourceDir, 'GPUCache', 'index'), 'cache')
++  mkdirSync(join(sourceDir, 'blob_storage'), { recursive: true })
++  mkdirSync(join(sourceDir, 'logs'), { recursive: true })
++  writeFileSync(join(sourceDir, 'logs', 'main.log'), 'log line')
++  writeFileSync(join(sourceDir, '.updaterId'), 'updater-uuid')
++  // Dead pid: the running-Orca warning has its own dedicated test with a live pid.
++  writeFileSync(join(sourceDir, 'orca-runtime.json'), '{"pid":999999}')
++  mkdirSync(join(sourceDir, 'daemon'), { recursive: true })
++  writeFileSync(join(sourceDir, 'daemon', 'daemon-v32.token'), 'secret')
++  writeFileSync(join(sourceDir, 'SingletonLock'), '')
++  writeFileSync(join(sourceDir, 'SingletonCookie'), '')
++  mkdirSync(join(sourceDir, 'Partitions', 'agent', 'Cache'), { recursive: true })
++  writeFileSync(join(sourceDir, 'Partitions', 'agent', 'Cache', 'data_1'), 'cache')
++  mkdirSync(join(sourceDir, 'Partitions', 'agent', 'Local Storage'), { recursive: true })
++  writeFileSync(join(sourceDir, 'Partitions', 'agent', 'Local Storage', 'leveldb'), 'storage')
++}
++
++function readMarker(): { decision: string; at: string; sourcePath: string } {
++  return JSON.parse(readFileSync(join(userDataDir, MARKER_FILE), 'utf8')) as {
++    decision: string
++    at: string
++    sourcePath: string
++  }
++}
++
++describe('maybeOfferOfficialOrcaImport', () => {
++  it('imports everything except denylisted noise when the user accepts', async () => {
++    seedSourceProfile()
++    showMessageBoxMock.mockResolvedValue({ response: 0 })
++
++    const outcome: OfficialOrcaImportOutcome = await maybeOfferOfficialOrcaImport(userDataDir)
++
++    expect(showMessageBoxMock).toHaveBeenCalledOnce()
++    expect(showMessageBoxMock).toHaveBeenCalledWith(
++      expect.objectContaining({
++        buttons: ['Import Everything', 'Start Fresh'],
++        defaultId: 0,
++        cancelId: 1,
++        title: 'Import your data from Orca?',
++        detail: expect.stringContaining('re-enter')
++      })
++    )
++    expect(outcome).toEqual({
++      offered: true,
++      decision: 'imported',
++      copiedEntries: expect.any(Number),
++      failedEntries: []
++    })
++
++    expect(readFileSync(join(userDataDir, 'orca-data.json'), 'utf8')).toBe('{"repos":[]}')
++    expect(existsSync(join(userDataDir, 'orca-stats.json'))).toBe(true)
++    expect(existsSync(join(userDataDir, 'orca-profile-index.json'))).toBe(true)
++    expect(existsSync(join(userDataDir, 'terminal-history', 'session.jsonl'))).toBe(true)
++    expect(existsSync(join(userDataDir, 'Partitions', 'agent', 'Local Storage', 'leveldb'))).toBe(
++      true
++    )
++
++    expect(existsSync(join(userDataDir, 'Cache'))).toBe(false)
++    expect(existsSync(join(userDataDir, 'Code Cache'))).toBe(false)
++    expect(existsSync(join(userDataDir, 'GPUCache'))).toBe(false)
++    expect(existsSync(join(userDataDir, 'blob_storage'))).toBe(false)
++    expect(existsSync(join(userDataDir, 'logs'))).toBe(false)
++    expect(existsSync(join(userDataDir, '.updaterId'))).toBe(false)
++    expect(existsSync(join(userDataDir, 'orca-runtime.json'))).toBe(false)
++    expect(existsSync(join(userDataDir, 'daemon'))).toBe(false)
++    expect(existsSync(join(userDataDir, 'SingletonLock'))).toBe(false)
++    expect(existsSync(join(userDataDir, 'SingletonCookie'))).toBe(false)
++    expect(existsSync(join(userDataDir, 'Partitions', 'agent', 'Cache'))).toBe(false)
++
++    const marker = readMarker()
++    expect(marker.decision).toBe('imported')
++    expect(marker.sourcePath).toBe(sourceDir)
++    expect(typeof marker.at).toBe('string')
++
++    // Atomic per-file copies must leave no temp remnants behind.
++    expect(readdirSync(userDataDir).some((name) => name.endsWith('.orca-import-tmp'))).toBe(false)
++  })
++
++  it('refuses a source directory that contains the fork profile', async () => {
++    writeFileSync(join(rootDir, 'orca-data.json'), '{}')
++    process.env.ORCA_FORK_IMPORT_SOURCE = rootDir
++
++    const outcome = await maybeOfferOfficialOrcaImport(userDataDir)
++
++    expect(outcome).toEqual({ offered: false, reason: 'source-missing' })
++    expect(showMessageBoxMock).not.toHaveBeenCalled()
++  })
++
++  it('warns in the dialog when official Orca appears to be running', async () => {
++    seedSourceProfile()
++    writeFileSync(join(sourceDir, 'orca-runtime.json'), JSON.stringify({ pid: process.pid }))
++    showMessageBoxMock.mockResolvedValue({ response: 1 })
++
++    await maybeOfferOfficialOrcaImport(userDataDir)
++
++    expect(showMessageBoxMock).toHaveBeenCalledWith(
++      expect.objectContaining({ detail: expect.stringContaining('quit Orca') })
++    )
++  })
++
++  it('fails hard without a marker when core data cannot be copied', async () => {
++    seedSourceProfile()
++    showMessageBoxMock.mockResolvedValue({ response: 0 })
++    fsMockState.failCopyFileFor = 'orca-data.json'
++
++    const outcome = await maybeOfferOfficialOrcaImport(userDataDir)
++
++    expect(outcome).toMatchObject({ offered: true, decision: 'import-failed' })
++    expect(showMessageBoxMock).toHaveBeenCalledTimes(2)
++    expect(showMessageBoxMock).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'error' }))
++    // No marker: the prompt must re-arm so the user can retry after fixing the cause.
++    expect(existsSync(join(userDataDir, MARKER_FILE))).toBe(false)
++    expect(existsSync(join(userDataDir, 'orca-data.json'))).toBe(false)
++    expect(readdirSync(userDataDir).some((name) => name.endsWith('.orca-import-tmp'))).toBe(false)
++  })
++
++  it('writes the marker and copies nothing when the user declines', async () => {
++    seedSourceProfile()
++    showMessageBoxMock.mockResolvedValue({ response: 1 })
++
++    const outcome = await maybeOfferOfficialOrcaImport(userDataDir)
++
++    expect(outcome).toEqual({ offered: true, decision: 'declined' })
++    expect(readMarker().decision).toBe('declined')
++    expect(readdirSync(userDataDir)).toEqual([MARKER_FILE])
++  })
++
++  it('does not offer when the fork profile already has data', async () => {
++    seedSourceProfile()
++    writeFileSync(join(userDataDir, 'orca-data.json'), '{}')
++
++    const outcome = await maybeOfferOfficialOrcaImport(userDataDir)
++
++    expect(outcome).toEqual({ offered: false, reason: 'profile-not-fresh' })
++    expect(showMessageBoxMock).not.toHaveBeenCalled()
++    expect(existsSync(join(userDataDir, MARKER_FILE))).toBe(false)
++  })
++
++  it('does not offer when a prior decision marker exists', async () => {
++    seedSourceProfile()
++    writeFileSync(
++      join(userDataDir, MARKER_FILE),
++      JSON.stringify({ decision: 'declined', at: 'x', sourcePath: sourceDir })
++    )
++
++    const outcome = await maybeOfferOfficialOrcaImport(userDataDir)
++
++    expect(outcome).toEqual({ offered: false, reason: 'already-decided' })
++    expect(showMessageBoxMock).not.toHaveBeenCalled()
++    expect(existsSync(join(userDataDir, 'orca-data.json'))).toBe(false)
++  })
++
++  it('does not offer when the source profile is missing', async () => {
++    const outcome = await maybeOfferOfficialOrcaImport(userDataDir)
++
++    expect(outcome).toEqual({ offered: false, reason: 'source-missing' })
++    expect(showMessageBoxMock).not.toHaveBeenCalled()
++  })
++
++  it('does not offer when the source directory has no orca-data.json', async () => {
++    mkdirSync(sourceDir, { recursive: true })
++    writeFileSync(join(sourceDir, 'unrelated.txt'), 'x')
++
++    const outcome = await maybeOfferOfficialOrcaImport(userDataDir)
++
++    expect(outcome).toEqual({ offered: false, reason: 'source-missing' })
++    expect(showMessageBoxMock).not.toHaveBeenCalled()
++  })
++
++  it('does not offer when unpackaged and no source override is set', async () => {
++    seedSourceProfile()
++    delete process.env.ORCA_FORK_IMPORT_SOURCE
++    electronState.isPackaged = false
++
++    const outcome = await maybeOfferOfficialOrcaImport(userDataDir)
++
++    expect(outcome).toEqual({ offered: false, reason: 'not-eligible' })
++    expect(showMessageBoxMock).not.toHaveBeenCalled()
++  })
++
++  it('resolves the sibling Orca directory when packaged without an override', async () => {
++    seedSourceProfile()
++    delete process.env.ORCA_FORK_IMPORT_SOURCE
++    electronState.isPackaged = true
++    showMessageBoxMock.mockResolvedValue({ response: 0 })
++
++    const outcome = await maybeOfferOfficialOrcaImport(userDataDir)
++
++    expect(outcome).toMatchObject({ offered: true, decision: 'imported' })
++    expect(existsSync(join(userDataDir, 'orca-data.json'))).toBe(true)
++    expect(readMarker().sourcePath).toBe(sourceDir)
++  })
++
++  it('continues past a per-entry copy failure', async () => {
++    seedSourceProfile()
++    // A directory where the source has a file makes copyFileSync fail on every platform.
++    mkdirSync(join(userDataDir, 'orca-stats.json', 'blocker'), { recursive: true })
++    showMessageBoxMock.mockResolvedValue({ response: 0 })
++
++    const outcome = await maybeOfferOfficialOrcaImport(userDataDir)
++
++    expect(outcome).toMatchObject({ offered: true, decision: 'imported' })
++    if (outcome.offered && outcome.decision === 'imported') {
++      expect(outcome.failedEntries).toContain('orca-stats.json')
++    }
++    expect(existsSync(join(userDataDir, 'orca-data.json'))).toBe(true)
++    expect(existsSync(join(userDataDir, 'terminal-history', 'session.jsonl'))).toBe(true)
++    // Skipped entries must be surfaced, not silently logged.
++    expect(showMessageBoxMock).toHaveBeenCalledTimes(2)
++    expect(showMessageBoxMock).toHaveBeenLastCalledWith(
++      expect.objectContaining({
++        type: 'warning',
++        detail: expect.stringContaining('orca-stats.json')
++      })
++    )
++  })
++
++  it('shows an error dialog and continues fresh when the top-level copy fails', async () => {
++    seedSourceProfile()
++    showMessageBoxMock.mockResolvedValue({ response: 0 })
++    fsMockState.failNextReaddir = true
++
++    const outcome = await maybeOfferOfficialOrcaImport(userDataDir)
++
++    expect(outcome).toEqual({
++      offered: true,
++      decision: 'import-failed',
++      error: 'simulated I/O failure'
++    })
++    expect(showMessageBoxMock).toHaveBeenCalledTimes(2)
++    expect(showMessageBoxMock).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'error' }))
++    // No marker after a failed copy: the prompt re-arms so the import can be retried.
++    expect(existsSync(join(userDataDir, MARKER_FILE))).toBe(false)
++  })
++})
++
++describe('startup wiring', () => {
++  it('offers the import after app-ready and before the profile store loads', () => {
++    const source = readFileSync(join(process.cwd(), 'src', 'main', 'index.ts'), 'utf8')
++    const appReady = source.indexOf("logStartupMilestone('app-ready')")
++    const importCall = source.indexOf('await maybeOfferOfficialOrcaImport(')
++    const profileResolve = source.indexOf('ensureActiveOrcaProfile()')
++    const storeLoad = source.indexOf('new Store(')
++
++    expect(appReady).toBeGreaterThanOrEqual(0)
++    expect(importCall).toBeGreaterThan(appReady)
++    expect(profileResolve).toBeGreaterThan(importCall)
++    expect(storeLoad).toBeGreaterThan(importCall)
++  })
++})
+diff --git a/src/main/startup/official-orca-import.ts b/src/main/startup/official-orca-import.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..4e28c855d450ccc1a24a018f1fb2e07e2fae57e3
+--- /dev/null
++++ b/src/main/startup/official-orca-import.ts
+@@ -0,0 +1,344 @@
++import { app, dialog, type MessageBoxOptions } from 'electron'
++import {
++  constants as fsConstants,
++  copyFileSync,
++  existsSync,
++  lstatSync,
++  mkdirSync,
++  readFileSync,
++  readdirSync,
++  readlinkSync,
++  renameSync,
++  rmSync,
++  symlinkSync,
++  writeFileSync,
++  type Dirent
++} from 'node:fs'
++import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
++
++/** Directory name of the official Orca install's userData, sibling of this fork's userData. */
++const OFFICIAL_PROFILE_DIRECTORY_NAME = 'Orca'
++const SOURCE_OVERRIDE_ENV = 'ORCA_FORK_IMPORT_SOURCE'
++const DECISION_MARKER_FILE_NAME = 'fork-import-decision.json'
++const ATOMIC_COPY_SUFFIX = '.orca-import-tmp'
++
++// Denylist grounded in a real ~/Library/Application Support/Orca listing (2026-08-05).
++// Skipped at ANY depth (Partitions/<name>/ repeats the Chromium layout per webview partition):
++const CHROMIUM_NOISE_ENTRY_NAMES: ReadonlySet<string> = new Set([
++  'Cache', // Chromium HTTP disk cache; regenerated on demand, large
++  'Code Cache', // V8/Blink compiled-code cache keyed to the source binary
++  'GPUCache', // GPU shader disk cache; invalid across binaries and driver updates
++  'DawnGraphiteCache', // WebGPU (Dawn) pipeline caches; same invalidation story
++  'DawnWebGPUCache',
++  'ShaderCache', // Chromium shader caches seen on Windows/Linux installs
++  'GrShaderCache',
++  'blob_storage', // per-session Blob spill area; orphaned without its owning session
++  'Crashpad', // crash-handler database describing the OTHER install's crashes
++  'SingletonLock', // Electron single-instance lock (symlink to host+pid); copying poisons instance detection
++  'SingletonCookie',
++  'SingletonSocket'
++])
++
++// Skipped only at the profile root; same-named entries deeper down are session content.
++const ROOT_ONLY_SKIP_ENTRY_NAMES: ReadonlySet<string> = new Set([
++  'logs', // the other install's main/renderer log files
++  '.updaterId', // per-install updater identity; copying makes this fork impersonate official Orca to its update feed
++  'orca-runtime.json', // live-process pointer (pid + IPC endpoints) of the running official app
++  'daemon', // running daemon pid/socket/auth token; sharing it would cross-wire the two installs
++  DECISION_MARKER_FILE_NAME // a source file must never clobber this fork's own decision marker
++])
++
++// Copied FIRST, before the bulky remainder: if the import is interrupted after these land,
++// the fork still has its core data, and the freshness gate keeps the prompt from re-arming
++// onto a half-seeded profile. A failure on any of these aborts the import entirely.
++const CORE_ROOT_ENTRY_PREFIXES: readonly string[] = [
++  'orca-data.json', // covers the .bak rotation ring too
++  'orca-profile-index.json',
++  'profiles'
++]
++
++export type ForkImportDecision = 'imported' | 'declined'
++
++export type OfficialOrcaImportOutcome =
++  | {
++      offered: false
++      reason: 'not-eligible' | 'profile-not-fresh' | 'already-decided' | 'source-missing'
++    }
++  | { offered: true; decision: 'declined' }
++  | { offered: true; decision: 'imported'; copiedEntries: number; failedEntries: string[] }
++  | { offered: true; decision: 'import-failed'; error: string }
++
++type ProfileCopyResult = {
++  copiedEntries: number
++  failedEntries: string[]
++}
++
++class CoreImportError extends Error {
++  constructor(relativePath: string, cause: unknown) {
++    super(
++      `Core data file could not be copied (${relativePath}): ${
++        cause instanceof Error ? cause.message : String(cause)
++      }`
++    )
++  }
++}
++
++function hasOrcaProfileData(directory: string): boolean {
++  return (
++    existsSync(join(directory, 'orca-data.json')) ||
++    existsSync(join(directory, 'orca-profile-index.json'))
++  )
++}
++
++/** True when child equals parent or lives anywhere beneath it. */
++function isPathContained(parent: string, child: string): boolean {
++  const rel = relative(resolve(parent), resolve(child))
++  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
++}
++
++/** Best-effort liveness probe of the official install via its runtime pointer file. */
++function officialOrcaAppearsRunning(sourcePath: string): boolean {
++  try {
++    const runtime = JSON.parse(readFileSync(join(sourcePath, 'orca-runtime.json'), 'utf8')) as {
++      pid?: unknown
++    }
++    if (typeof runtime.pid !== 'number' || !Number.isInteger(runtime.pid) || runtime.pid <= 0) {
++      return false
++    }
++    process.kill(runtime.pid, 0)
++    return true
++  } catch {
++    return false
++  }
++}
++
++function buildImportDialogOptions(sourcePath: string, sourceRunning: boolean): MessageBoxOptions {
++  const runningWarning = sourceRunning
++    ? '\n\nOrca appears to be running right now. For the most consistent copy, quit Orca first, then choose Import Everything.'
++    : ''
++  return {
++    type: 'question',
++    buttons: ['Import Everything', 'Start Fresh'],
++    defaultId: 0,
++    cancelId: 1,
++    title: 'Import your data from Orca?',
++    message: 'Import your data from Orca?',
++    detail: `Orca Configured found an existing Orca profile at:\n${sourcePath}\n\nImport Everything copies its settings, workspaces, worktrees, sessions, and browser data into Orca Configured. The official Orca install is not modified. Large profiles can take several minutes; Orca Configured opens when the import finishes.\n\nSecurely stored credentials are encrypted for the official Orca app and cannot be read here, so saved credentials and API keys may need to be re-entered after importing.${runningWarning}`
++  }
++}
++
++function buildImportFailedDialogOptions(errorMessage: string): MessageBoxOptions {
++  return {
++    type: 'error',
++    buttons: ['Continue'],
++    defaultId: 0,
++    title: 'Import Failed',
++    message: 'Importing your Orca data failed.',
++    detail: `${errorMessage}\n\nOrca Configured will start with a fresh profile and offer the import again on the next launch. Your official Orca data was not modified.`
++  }
++}
++
++function buildPartialImportDialogOptions(failedEntries: string[]): MessageBoxOptions {
++  const shown = failedEntries.slice(0, 8).join('\n')
++  const remainder = failedEntries.length > 8 ? `\n…and ${failedEntries.length - 8} more.` : ''
++  return {
++    type: 'warning',
++    buttons: ['Continue'],
++    defaultId: 0,
++    title: 'Import Finished With Skipped Items',
++    message: `${failedEntries.length} item(s) could not be imported.`,
++    detail: `Your core data was imported, but these items were skipped:\n${shown}${remainder}\n\nThis usually happens when Orca is running during the import. Caches rebuild themselves automatically.`
++  }
++}
++
++function writeDecisionMarker(
++  userDataPath: string,
++  decision: ForkImportDecision,
++  sourcePath: string
++): void {
++  try {
++    mkdirSync(userDataPath, { recursive: true })
++    writeFileSync(
++      join(userDataPath, DECISION_MARKER_FILE_NAME),
++      `${JSON.stringify({ decision, at: new Date().toISOString(), sourcePath }, null, 2)}\n`
++    )
++  } catch (error) {
++    // A lost marker only risks re-showing the prompt next launch; never block startup on it.
++    console.warn(
++      '[fork-import] Failed to write decision marker:',
++      error instanceof Error ? error.message : String(error)
++    )
++  }
++}
++
++/** Copy-then-rename so a crash mid-copy can never leave a torn file at the real path. */
++function copyFileAtomically(sourcePath: string, targetPath: string): void {
++  const tmpPath = `${targetPath}${ATOMIC_COPY_SUFFIX}`
++  try {
++    // FICLONE: instant copy-on-write clones on APFS/Btrfs; falls back to a real copy elsewhere.
++    copyFileSync(sourcePath, tmpPath, fsConstants.COPYFILE_FICLONE)
++    renameSync(tmpPath, targetPath)
++  } catch (error) {
++    rmSync(tmpPath, { force: true })
++    throw error
++  }
++}
++
++function isCoreRootEntry(entryName: string, depth: number): boolean {
++  return depth === 0 && CORE_ROOT_ENTRY_PREFIXES.some((prefix) => entryName.startsWith(prefix))
++}
++
++function copyProfileEntry(
++  sourcePath: string,
++  targetPath: string,
++  entryName: string,
++  relativePath: string,
++  depth: number,
++  core: boolean,
++  result: ProfileCopyResult
++): void {
++  if (
++    CHROMIUM_NOISE_ENTRY_NAMES.has(entryName) ||
++    (depth === 0 && ROOT_ONLY_SKIP_ENTRY_NAMES.has(entryName))
++  ) {
++    return
++  }
++  try {
++    const stats = lstatSync(sourcePath)
++    if (stats.isDirectory()) {
++      mkdirSync(targetPath, { recursive: true })
++      const children: Dirent[] = readdirSync(sourcePath, { withFileTypes: true })
++      for (const child of children) {
++        copyProfileEntry(
++          join(sourcePath, child.name),
++          join(targetPath, child.name),
++          child.name,
++          join(relativePath, child.name),
++          depth + 1,
++          core,
++          result
++        )
++      }
++    } else if (stats.isFile()) {
++      copyFileAtomically(sourcePath, targetPath)
++      result.copiedEntries++
++    } else if (stats.isSymbolicLink()) {
++      const linkTarget = readlinkSync(sourcePath)
++      rmSync(targetPath, { force: true })
++      symlinkSync(linkTarget, targetPath)
++      result.copiedEntries++
++    }
++    // Sockets/FIFOs/devices fall through untouched: fs cannot copy them and they are per-process
++    // runtime state (e.g. o-<pid>-<hash>.sock at the profile root).
++  } catch (error) {
++    if (core) {
++      // A profile missing its core data is worse than no import at all — abort and re-arm.
++      throw error instanceof CoreImportError ? error : new CoreImportError(relativePath, error)
++    }
++    // Per-entry force/continue semantics: one unreadable file must not abort the whole import.
++    result.failedEntries.push(relativePath)
++    console.warn(
++      `[fork-import] Failed to copy ${relativePath}:`,
++      error instanceof Error ? error.message : String(error)
++    )
++  }
++}
++
++function copyProfileTree(sourceDir: string, targetDir: string): ProfileCopyResult {
++  const result: ProfileCopyResult = { copiedEntries: 0, failedEntries: [] }
++  mkdirSync(targetDir, { recursive: true })
++  // The top-level readdir is allowed to throw: with no entry list there is nothing to salvage.
++  const entries: Dirent[] = readdirSync(sourceDir, { withFileTypes: true })
++  // Core data first: an interruption during the bulky remainder still leaves a usable profile.
++  const ordered = [...entries].sort(
++    (a, b) => Number(isCoreRootEntry(b.name, 0)) - Number(isCoreRootEntry(a.name, 0))
++  )
++  for (const entry of ordered) {
++    copyProfileEntry(
++      join(sourceDir, entry.name),
++      join(targetDir, entry.name),
++      entry.name,
++      entry.name,
++      0,
++      isCoreRootEntry(entry.name, 0),
++      result
++    )
++  }
++  return result
++}
++
++/** Remove any core files a failed import may have already landed, so the retry starts clean. */
++function removeCoreRemnants(userDataPath: string): void {
++  try {
++    for (const entry of readdirSync(userDataPath)) {
++      if (isCoreRootEntry(entry, 0) || entry.endsWith(ATOMIC_COPY_SUFFIX)) {
++        rmSync(join(userDataPath, entry), { recursive: true, force: true })
++      }
++    }
++  } catch (error) {
++    console.warn(
++      '[fork-import] Failed to clean up after aborted import:',
++      error instanceof Error ? error.message : String(error)
++    )
++  }
++}
++
++/**
++ * First-run prompt offering to copy an official Orca install's profile into this fork's fresh
++ * userData. Must run after app-ready (native dialog) and before the persistence Store first
++ * reads orca-data.json, so an accepted import is what the Store loads. Never call in serve mode.
++ */
++export async function maybeOfferOfficialOrcaImport(
++  userDataPath: string
++): Promise<OfficialOrcaImportOutcome> {
++  const overrideSource: string | undefined = process.env[SOURCE_OVERRIDE_ENV]?.trim() || undefined
++  if (!app.isPackaged && !overrideSource) {
++    return { offered: false, reason: 'not-eligible' }
++  }
++  if (hasOrcaProfileData(userDataPath)) {
++    return { offered: false, reason: 'profile-not-fresh' }
++  }
++  if (existsSync(join(userDataPath, DECISION_MARKER_FILE_NAME))) {
++    return { offered: false, reason: 'already-decided' }
++  }
++  const sourcePath: string =
++    overrideSource ?? join(dirname(userDataPath), OFFICIAL_PROFILE_DIRECTORY_NAME)
++  // Containment either way makes the recursive copy re-encounter its own output.
++  if (
++    isPathContained(sourcePath, userDataPath) ||
++    isPathContained(userDataPath, sourcePath) ||
++    !hasOrcaProfileData(sourcePath)
++  ) {
++    return { offered: false, reason: 'source-missing' }
++  }
++
++  const sourceRunning = officialOrcaAppearsRunning(sourcePath)
++  const { response } = await dialog.showMessageBox(
++    buildImportDialogOptions(sourcePath, sourceRunning)
++  )
++  if (response !== 0) {
++    writeDecisionMarker(userDataPath, 'declined', sourcePath)
++    return { offered: true, decision: 'declined' }
++  }
++
++  try {
++    const { copiedEntries, failedEntries } = copyProfileTree(sourcePath, userDataPath)
++    // Marker only after the copy: an interrupted import leaves either a fresh profile that
++    // re-offers, or a core-complete profile the freshness gate treats as established.
++    writeDecisionMarker(userDataPath, 'imported', sourcePath)
++    if (failedEntries.length > 0) {
++      console.warn(
++        `[fork-import] Imported with ${failedEntries.length} skipped entries:`,
++        failedEntries.slice(0, 20)
++      )
++      await dialog.showMessageBox(buildPartialImportDialogOptions(failedEntries))
++    }
++    return { offered: true, decision: 'imported', copiedEntries, failedEntries }
++  } catch (error) {
++    const message = error instanceof Error ? error.message : String(error)
++    console.error('[fork-import] Import from official Orca failed:', message)
++    removeCoreRemnants(userDataPath)
++    await dialog.showMessageBox(buildImportFailedDialogOptions(message))
++    return { offered: true, decision: 'import-failed', error: message }
++  }
++}

@@ -1,0 +1,1162 @@
+diff --git a/config/dev-app-update.yml b/config/dev-app-update.yml
+index f91b51c24eecfc4bde00196075f9dcb3a2f3f8b1..4792873329399cd9ebc5ecb0aa070cbc8b86eea9 100644
+--- a/config/dev-app-update.yml
++++ b/config/dev-app-update.yml
+@@ -1,4 +1,4 @@
+ provider: github
+-owner: stablyai
+-repo: orca
++owner: NextdoorPsycho
++repo: orca-configured
+ updaterCacheDirName: orca-updater
+diff --git a/config/electron-builder.config.cjs b/config/electron-builder.config.cjs
+index e581cd7a44ed5d3afe233a423f97c090bef2fd3a..06a79167483f430aace49bef8270816b46e22806 100644
+--- a/config/electron-builder.config.cjs
++++ b/config/electron-builder.config.cjs
+@@ -35,7 +35,7 @@ const devChannelBuildVersion = isMacHourly
+ // to install. Keeping adhoc separate from hourly too means a branch build cannot
+ // be picked up by someone who only meant to ride main.
+ const devChannelRepo = isMacHourly ? 'orca-hourly' : isMacAdhoc ? 'orca-adhoc' : null
+-const appId = 'com.stablyai.orca'
++const appId = 'art.arcane.orca.configured'
+ const featureWallResources = {
+   from: 'resources/onboarding/feature-wall',
+   to: 'onboarding/feature-wall'
+@@ -80,7 +80,7 @@ const winSpeechNativeResource = {
+ /** @type {import('electron-builder').Configuration} */
+ module.exports = {
+   appId,
+-  productName: 'Orca',
++  productName: 'Orca Configured',
+   ...(devChannelBuildVersion
+     ? { extraMetadata: { version: devChannelBuildVersion } }
+     : localBuildVersion
+@@ -273,11 +273,8 @@ module.exports = {
+   },
+   win: {
+     executableName: 'Orca',
+-    // Why: Windows installers are signed after electron-builder packaging by
+-    // SignPath, so the packager cannot infer the updater publisherName.
+-    signtoolOptions: {
+-      publisherName: 'SignPath Foundation'
+-    },
++    // Why: fork builds are unsigned; without a publisherName pin electron-updater
++    // skips the Authenticode publisher check instead of rejecting every installer.
+     extraResources: [
+       ...commonExtraResources,
+       ...createPackagedRuntimeNodeModuleResources('win32'),
+@@ -391,7 +388,11 @@ module.exports = {
+         target: 'zip',
+         arch: ['x64', 'arm64']
+       }
+-    ]
++    ],
++    // Why: productName has a space; the default zip name would diverge between
++    // latest-mac.yml's safe name (dashes) and GitHub's renamed asset (dots),
++    // 404ing every mac updater download. Keep this space-free.
++    artifactName: 'orca-macos-${version}-${arch}-mac.${ext}'
+   },
+   // Why: release builds should fail if signing is unavailable instead of
+   // silently downgrading to ad-hoc artifacts that look shippable in CI logs.
+@@ -432,7 +433,7 @@ module.exports = {
+       featureWallResources
+     ],
+     target: ['AppImage', 'deb'],
+-    maintainer: 'stablyai',
++    maintainer: 'Arcane Arts Inc.',
+     category: 'Utility'
+   },
+   appImage: {
+@@ -487,8 +488,8 @@ module.exports = {
+   npmRebuild: true,
+   publish: {
+     provider: 'github',
+-    owner: 'stablyai',
+-    repo: devChannelRepo ?? 'orca',
++    owner: 'NextdoorPsycho',
++    repo: devChannelRepo ?? 'orca-configured',
+     releaseType: devChannelRepo ? 'prerelease' : 'release'
+   }
+ }
+diff --git a/config/scripts/build-computer-macos.mjs b/config/scripts/build-computer-macos.mjs
+index 1730cfc77c4558d4a1a78c4a0a6a0cbb52692b1a..35cfb6872132343053399d0dbeff1d14d0cf1b90 100644
+--- a/config/scripts/build-computer-macos.mjs
++++ b/config/scripts/build-computer-macos.mjs
+@@ -14,7 +14,8 @@ const entitlementsPath = path.join(
+   'build',
+   'entitlements.computer-use.mac.plist'
+ )
+-const bundleId = process.env.ORCA_COMPUTER_MACOS_BUNDLE_ID ?? 'com.stablyai.orca.computer-use'
++const bundleId =
++  process.env.ORCA_COMPUTER_MACOS_BUNDLE_ID ?? 'art.arcane.orca.configured.computer-use'
+ const displayName = 'Orca Computer Use'
+ const signingIdentity = resolveSigningIdentity()
+ const universalTriples = ['arm64-apple-macosx', 'x86_64-apple-macosx']
+diff --git a/config/scripts/build-notification-status-macos.mjs b/config/scripts/build-notification-status-macos.mjs
+index e8150e32b6f1c741faf1f671b5435b8614e602d2..eaf031f22a7726a2af3b4b26fbf7b3de2af3e15d 100644
+--- a/config/scripts/build-notification-status-macos.mjs
++++ b/config/scripts/build-notification-status-macos.mjs
+@@ -28,7 +28,7 @@ if (process.platform !== 'darwin') {
+ }
+ 
+ const args = process.argv.slice(2)
+-const bundleId = readArg('--bundle-id') ?? 'com.stablyai.orca'
++const bundleId = readArg('--bundle-id') ?? 'art.arcane.orca.configured'
+ const outputPath = readArg('--output') ?? defaultOutputPath
+ // Why: dev launches only need the host architecture; release builds ship a
+ // universal binary matching the app's x64 + arm64 targets.
+diff --git a/config/scripts/electron-builder-config.test.mjs b/config/scripts/electron-builder-config.test.mjs
+index 3227d957b24ff054f17e25d7b8fa36679eaa9c68..603475d2ecb18481ef9269882c6da6b15b29ff83 100644
+--- a/config/scripts/electron-builder-config.test.mjs
++++ b/config/scripts/electron-builder-config.test.mjs
+@@ -62,6 +62,12 @@ describe('electron-builder config', () => {
+     )
+   })
+ 
++  it('pins a space-free mac zip artifact name so manifests, uploads, and probes agree', () => {
++    // Why: productName contains a space; the default zip name would diverge between
++    // latest-mac.yml (safe name, dashes) and the GitHub asset (dots) -> permanent 404s.
++    expect(electronBuilderConfig.mac.artifactName).toBe('orca-macos-${version}-${arch}-mac.${ext}')
++  })
++
+   it('excludes repo-only source trees from app.asar', () => {
+     expect(electronBuilderConfig.files).toEqual(
+       expect.arrayContaining([
+@@ -305,12 +311,12 @@ describe('electron-builder config', () => {
+ 
+   // Why: Squirrel.Mac swaps the .app in place only when the replacement carries the
+   // same bundle id and a valid Developer ID signature. A hourly built on the local
+-  // (com.stablyai.orca.local, ad-hoc) identity would be un-installable over a real
++  // (art.arcane.orca.configured.local, ad-hoc) identity would be un-installable over a real
+   // Orca — the whole point of the channel.
+   it('builds hourly artifacts with the release signing identity', () => {
+     withHourlyEnv((config) => {
+       expect(config.mac.appId).toBeUndefined()
+-      expect(config.appId).toBe('com.stablyai.orca')
++      expect(config.appId).toBe('art.arcane.orca.configured')
+       expect(config.mac.hardenedRuntime).toBe(true)
+       expect(config.forceCodeSigning).toBe(true)
+     })
+@@ -338,7 +344,7 @@ describe('electron-builder config', () => {
+       expect(config.publish).toMatchObject({ repo: 'orca-hourly', releaseType: 'prerelease' })
+     })
+     expect(electronBuilderConfig.publish).toMatchObject({
+-      repo: 'orca',
++      repo: 'orca-configured',
+       releaseType: 'release'
+     })
+   })
+@@ -357,7 +363,7 @@ describe('electron-builder config', () => {
+   // argument apply. Only the destination repo differs.
+   it('builds adhoc artifacts with the release identity and its own repo', () => {
+     withAdhocEnv((config) => {
+-      expect(config.appId).toBe('com.stablyai.orca')
++      expect(config.appId).toBe('art.arcane.orca.configured')
+       expect(config.mac.hardenedRuntime).toBe(true)
+       expect(config.mac.notarize).toBe(true)
+       expect(config.forceCodeSigning).toBe(true)
+diff --git a/config/scripts/mac-build-compatibility.test.mjs b/config/scripts/mac-build-compatibility.test.mjs
+index 81b642c503d390895b632b45f36ad6a0f560e94d..929427a1ee4cd5c67c01b27e754981c9f1353eac 100644
+--- a/config/scripts/mac-build-compatibility.test.mjs
++++ b/config/scripts/mac-build-compatibility.test.mjs
+@@ -14,7 +14,7 @@ describe('mac build compatibility metadata', () => {
+       })
+     ).toMatchObject({
+       formatVersion: 1,
+-      appId: 'com.stablyai.orca',
++      appId: 'art.arcane.orca.configured',
+       buildId: '1.2.3-local.1-abc123-arm64',
+       version: '1.2.3-local.1',
+       commit: 'abc123',
+diff --git a/config/scripts/macos-launch-diagnostics.sh b/config/scripts/macos-launch-diagnostics.sh
+index 41cb453ceccf6d92289ccbc6d021bcb66578df8f..bbbaf6b1ebf1af3e5409f97a6df218b37ad651e9 100755
+--- a/config/scripts/macos-launch-diagnostics.sh
++++ b/config/scripts/macos-launch-diagnostics.sh
+@@ -187,7 +187,7 @@ write_app_report() {
+ 
+ start_log_stream() {
+   local file="$1"
+-  local predicate='process == "Orca" OR eventMessage CONTAINS[c] "Orca" OR eventMessage CONTAINS[c] "com.stablyai.orca"'
++  local predicate='process == "Orca Configured" OR eventMessage CONTAINS[c] "Orca" OR eventMessage CONTAINS[c] "art.arcane.orca.configured"'
+   if command -v log >/dev/null 2>&1; then
+     command log stream --style compact --predicate "$predicate" >"$file" 2>&1 &
+     echo "$!"
+@@ -333,7 +333,7 @@ run_direct_exec_probe() {
+ }
+ 
+ write_system_log_snapshot() {
+-  local predicate='process == "Orca" OR eventMessage CONTAINS[c] "Orca" OR eventMessage CONTAINS[c] "com.stablyai.orca"'
++  local predicate='process == "Orca Configured" OR eventMessage CONTAINS[c] "Orca" OR eventMessage CONTAINS[c] "art.arcane.orca.configured"'
+   if command -v log >/dev/null 2>&1; then
+     diag_log "capturing recent unified log snapshot"
+     command log show --style syslog --last 10m --predicate "$predicate" >"$OUT_DIR/system-log-last-10m.log" 2>&1 || true
+diff --git a/config/scripts/run-electron-vite-dev.mjs b/config/scripts/run-electron-vite-dev.mjs
+index eb4addedd5a901259f08a227e54e0ac0df3e4122..b7d471570e9aa4cb7f25b7a62ae70c789ab13e11 100644
+--- a/config/scripts/run-electron-vite-dev.mjs
++++ b/config/scripts/run-electron-vite-dev.mjs
+@@ -152,7 +152,7 @@ function prepareMacDevElectronApp() {
+   // once, macOS may route a notification click to the other instance —
+   // Electron drops clicks for notification ids it didn't create, so the
+   // click is lost, not misdirected.
+-  const bundleId = 'com.stablyai.orca.dev'
++  const bundleId = 'art.arcane.orca.configured.dev'
+   const helperBundleId = `${bundleId}.helper`
+   process.env.ORCA_DEV_MACOS_BUNDLE_ID = bundleId
+   const expectedMarker = JSON.stringify(
+diff --git a/config/scripts/verify-release-required-assets.mjs b/config/scripts/verify-release-required-assets.mjs
+index cc0c986ff65966f05f5f1ed1ddcd0b215ebf2061..932850982b4e406715e9738a55e697d12535a986 100644
+--- a/config/scripts/verify-release-required-assets.mjs
++++ b/config/scripts/verify-release-required-assets.mjs
+@@ -19,10 +19,10 @@ export function getRequiredReleaseAssetNames(tag) {
+     `orca-ide-${version}.aarch64.rpm`,
+     'orca-windows-setup.exe',
+     'orca-windows-setup.exe.blockmap',
+-    `Orca-${version}-mac.zip`,
+-    `Orca-${version}-mac.zip.blockmap`,
+-    `Orca-${version}-arm64-mac.zip`,
+-    `Orca-${version}-arm64-mac.zip.blockmap`,
++    `orca-macos-${version}-x64-mac.zip`,
++    `orca-macos-${version}-x64-mac.zip.blockmap`,
++    `orca-macos-${version}-arm64-mac.zip`,
++    `orca-macos-${version}-arm64-mac.zip.blockmap`,
+     'orca-macos-x64.dmg',
+     'orca-macos-x64.dmg.blockmap',
+     'orca-macos-arm64.dmg',
+diff --git a/config/scripts/verify-release-required-assets.test.mjs b/config/scripts/verify-release-required-assets.test.mjs
+index 9b593f5716ab099edcab62719f4e45911f85512d..3e0c3021a8c8ce2e30c04a5505f90f939ae78445 100644
+--- a/config/scripts/verify-release-required-assets.test.mjs
++++ b/config/scripts/verify-release-required-assets.test.mjs
+@@ -37,10 +37,10 @@ describe('getRequiredReleaseAssetNames', () => {
+   it('includes both mac updater ZIP names for the tag version', () => {
+     expect(getRequiredReleaseAssetNames('v1.4.27')).toEqual(
+       expect.arrayContaining([
+-        'Orca-1.4.27-mac.zip',
+-        'Orca-1.4.27-mac.zip.blockmap',
+-        'Orca-1.4.27-arm64-mac.zip',
+-        'Orca-1.4.27-arm64-mac.zip.blockmap'
++        'orca-macos-1.4.27-x64-mac.zip',
++        'orca-macos-1.4.27-x64-mac.zip.blockmap',
++        'orca-macos-1.4.27-arm64-mac.zip',
++        'orca-macos-1.4.27-arm64-mac.zip.blockmap'
+       ])
+     )
+   })
+@@ -66,12 +66,12 @@ describe('extractManifestAssetNames', () => {
+       extractManifestAssetNames(
+         [
+           'files:',
+-          '  - url: Orca-1.4.27-arm64-mac.zip',
++          '  - url: orca-macos-1.4.27-arm64-mac.zip',
+           '  - url: https://example.com/downloads/orca-windows-setup.exe',
+           'path: orca-linux.AppImage'
+         ].join('\n')
+       )
+-    ).toEqual(['Orca-1.4.27-arm64-mac.zip', 'orca-windows-setup.exe', 'orca-linux.AppImage'])
++    ).toEqual(['orca-macos-1.4.27-arm64-mac.zip', 'orca-windows-setup.exe', 'orca-linux.AppImage'])
+   })
+ })
+ 
+@@ -79,7 +79,7 @@ describe('verifyRequiredReleaseAssets', () => {
+   it('fails when a manifest-referenced asset has not been uploaded', async () => {
+     const tag = 'v1.4.27'
+     const required = getRequiredReleaseAssetNames(tag)
+-    const assets = required.filter((name) => name !== 'Orca-1.4.27-arm64-mac.zip')
++    const assets = required.filter((name) => name !== 'orca-macos-1.4.27-arm64-mac.zip')
+     const release = releaseWithAssets(tag, assets)
+     const latestMacAsset = release.assets.find((asset) => asset.name === 'latest-mac.yml')
+     const fetchMock = vi
+@@ -90,9 +90,9 @@ describe('verifyRequiredReleaseAssets', () => {
+           [
+             'version: 1.4.27',
+             'files:',
+-            '  - url: Orca-1.4.27-arm64-mac.zip',
++            '  - url: orca-macos-1.4.27-arm64-mac.zip',
+             '    sha512: test',
+-            'path: Orca-1.4.27-arm64-mac.zip'
++            'path: orca-macos-1.4.27-arm64-mac.zip'
+           ].join('\n')
+         )
+       )
+@@ -101,7 +101,7 @@ describe('verifyRequiredReleaseAssets', () => {
+ 
+     await expect(
+       verifyRequiredReleaseAssets({ repo: 'stablyai/orca', tag, token: 'token' })
+-    ).rejects.toThrow('Missing: Orca-1.4.27-arm64-mac.zip')
++    ).rejects.toThrow('Missing: orca-macos-1.4.27-arm64-mac.zip')
+     expect(latestMacAsset).toBeTruthy()
+   })
+ 
+diff --git a/native/computer-use-macos/Sources/OrcaComputerUseMacOS/main.swift b/native/computer-use-macos/Sources/OrcaComputerUseMacOS/main.swift
+index 50ecae7d024eaa67d29178fad34312e8a26d0f63..1b2e08b3f24d2fda8a3d4cc4124f8f637988895e 100644
+--- a/native/computer-use-macos/Sources/OrcaComputerUseMacOS/main.swift
++++ b/native/computer-use-macos/Sources/OrcaComputerUseMacOS/main.swift
+@@ -3755,8 +3755,8 @@ private func isTrustedOrcaApplication(_ pid: pid_t) -> Bool {
+     }
+     // Why: dev validation runs from per-worktree wrapper apps with stable
+     // Orca-owned bundle ids; the sidecar peer check must still authorize them.
+-    return bundleId == "com.stablyai.orca" ||
+-        bundleId.hasPrefix("com.stablyai.orca.dev.") ||
++    return bundleId == "art.arcane.orca.configured" ||
++        bundleId.hasPrefix("art.arcane.orca.configured.dev.") ||
+         bundleId == "com.github.Electron"
+ }
+ 
+diff --git a/native/computer-use-macos/Sources/OrcaComputerUseMacOSCore/AuthenticatedConnectionHangupMonitor.swift b/native/computer-use-macos/Sources/OrcaComputerUseMacOSCore/AuthenticatedConnectionHangupMonitor.swift
+index 55e4ec917211829c7fa77f1917f63b85a1fecff0..941036369b9fac77321e338d04721ae67ac22079 100644
+--- a/native/computer-use-macos/Sources/OrcaComputerUseMacOSCore/AuthenticatedConnectionHangupMonitor.swift
++++ b/native/computer-use-macos/Sources/OrcaComputerUseMacOSCore/AuthenticatedConnectionHangupMonitor.swift
+@@ -26,7 +26,7 @@ public final class AuthenticatedConnectionHangupMonitor: @unchecked Sendable {
+     public convenience init(
+         fileDescriptor: Int32,
+         queue: DispatchQueue = DispatchQueue(
+-            label: "com.stablyai.orca.computer-use-owner-hangup"
++            label: "art.arcane.orca.configured.computer-use-owner-hangup"
+         ),
+         onEvent: @escaping @Sendable () -> Void = {},
+         onHangup: @escaping @Sendable () -> Void
+@@ -51,7 +51,7 @@ public final class AuthenticatedConnectionHangupMonitor: @unchecked Sendable {
+     init(
+         fileDescriptor: Int32,
+         queue: DispatchQueue = DispatchQueue(
+-            label: "com.stablyai.orca.computer-use-owner-hangup"
++            label: "art.arcane.orca.configured.computer-use-owner-hangup"
+         ),
+         registerEvents: RegisterEvents,
+         closeDescriptor: @escaping CloseDescriptor,
+diff --git a/package.json b/package.json
+index d800838281bbed47b722f02ea815615ca1979f01..bca021beb272706dae3674d434b217c04d7b26bb 100644
+--- a/package.json
++++ b/package.json
+@@ -2,8 +2,8 @@
+   "name": "orca",
+   "version": "1.4.174-rc.0",
+   "description": "Next-gen IDE for parallel agentic development",
+-  "homepage": "https://github.com/stablyai/orca",
+-  "author": "stablyai",
++  "homepage": "https://github.com/NextdoorPsycho/orca-configured",
++  "author": "Arcane Arts Inc.",
+   "bin": {
+     "orca": "./out/cli/index.js",
+     "orca-dev": "./config/scripts/orca-dev.mjs"
+@@ -304,6 +304,7 @@
+       "@xterm/xterm@6.1.0-beta.287": "config/patches/@xterm__xterm@6.1.0-beta.287.patch"
+     }
+   },
++  "productName": "Orca Configured",
+   "reactDoctor": {
+     "rules": {
+       "react-doctor/js-combine-iterations": "off"
+diff --git a/src/main/computer/macos-computer-use-permissions.ts b/src/main/computer/macos-computer-use-permissions.ts
+index 36d7cedf59d7bcb34e5fd23dc54e9bf2701691b7..6624437fe473bbea1d584159ddf29620411658be 100644
+--- a/src/main/computer/macos-computer-use-permissions.ts
++++ b/src/main/computer/macos-computer-use-permissions.ts
+@@ -10,7 +10,7 @@ import type {
+   ComputerUsePermissionStatusResult
+ } from '../../shared/computer-use-permissions-types'
+ 
+-const DEFAULT_COMPUTER_USE_BUNDLE_ID = 'com.stablyai.orca.computer-use'
++const DEFAULT_COMPUTER_USE_BUNDLE_ID = 'art.arcane.orca.configured.computer-use'
+ 
+ export { getComputerUsePermissionStatus } from './macos-computer-use-permission-status'
+ 
+diff --git a/src/main/ipc/notifications.ts b/src/main/ipc/notifications.ts
+index 95e9e3e3a4763971a2058d15501786bc4c89554b..9868c7593ad839b15f4d89c7dce655a382bf6373 100644
+--- a/src/main/ipc/notifications.ts
++++ b/src/main/ipc/notifications.ts
+@@ -34,7 +34,7 @@ const MAX_RECENT_NOTIFICATION_KEYS = 50
+ const NOTIFICATION_DISPLAY_CONFIRMATION_TIMEOUT_MS = 2500
+ const NOTIFICATION_RELEASE_FALLBACK_MS = 5 * 60 * 1000
+ const MAX_NOTIFICATION_SOUND_BYTES = 10 * 1024 * 1024
+-const MACOS_PACKAGED_BUNDLE_ID = 'com.stablyai.orca'
++const MACOS_PACKAGED_BUNDLE_ID = 'art.arcane.orca.configured'
+ const MACOS_NOTIFICATION_SETTINGS_URL =
+   'x-apple.systempreferences:com.apple.Notifications-Settings.extension'
+ const NOTIFICATION_SOUND_MIME_BY_EXTENSION: ReadonlyMap<string, string> = new Map([
+diff --git a/src/main/local-builds/local-build-candidate.test.ts b/src/main/local-builds/local-build-candidate.test.ts
+index 2807164ed9c29fa0753023f1f771003d8a858c16..0f876de8bcbdbd4be9eb46388cd4d6692e4b903c 100644
+--- a/src/main/local-builds/local-build-candidate.test.ts
++++ b/src/main/local-builds/local-build-candidate.test.ts
+@@ -16,7 +16,7 @@ const execFileAsync = promisify(execFile)
+ function compatibility(): LocalBuildCompatibility {
+   return {
+     formatVersion: 1,
+-    appId: 'com.stablyai.orca',
++    appId: 'art.arcane.orca.configured',
+     buildId: '1.2.3-local.1-abc-arm64',
+     version: '1.2.3-local.1',
+     commit: 'abc',
+diff --git a/src/main/local-builds/local-build-compatibility-contract.test.ts b/src/main/local-builds/local-build-compatibility-contract.test.ts
+index dc2e2af54fdb7a76ac16b607d451b1bab1bb85b7..23708d6416a0a05fdc971e343ef08e68bfefc7b6 100644
+--- a/src/main/local-builds/local-build-compatibility-contract.test.ts
++++ b/src/main/local-builds/local-build-compatibility-contract.test.ts
+@@ -11,7 +11,7 @@ describe('packaged local build compatibility contract', () => {
+   it('stays aligned with runtime state and daemon constants', () => {
+     expect(LOCAL_BUILD_COMPATIBILITY_CONTRACT).toEqual(compatibilityContract)
+     expect(compatibilityContract).toMatchObject({
+-      appId: 'com.stablyai.orca',
++      appId: 'art.arcane.orca.configured',
+       stateSchemaVersion: SCHEMA_VERSION,
+       readableStateSchemaVersions: [SCHEMA_VERSION],
+       daemonProtocolVersion: PROTOCOL_VERSION,
+diff --git a/src/main/macos-tcc-prompt-watch.test.ts b/src/main/macos-tcc-prompt-watch.test.ts
+index a0e9d9370a69ebbd73cfa6c42b2c3e7e61b8525e..1e7eb51ad5b277dcc6b9795e9cd5e6a633d2297e 100644
+--- a/src/main/macos-tcc-prompt-watch.test.ts
++++ b/src/main/macos-tcc-prompt-watch.test.ts
+@@ -15,7 +15,7 @@ const REAL_PROMPT_LINE =
+ 
+ // Same shape, but the #9756 case: an agent CLI accesses, Orca is held responsible.
+ const ORCA_APPDATA_LINE =
+-  '2026-07-27 15:40:02.001 Df tccd[79149:c81551c] [com.apple.TCC:access] AUTHREQ_PROMPTING: msgID=80871.99, service=kTCCServiceSystemPolicyAppData, subject=Sub:{node-5555494487fbc7467d473fd8b0a397018cbf954b}Resp:{TCCDProcess: identifier=com.stablyai.orca, pid=47548, auid=501, euid=501, binary_path=/opt/homebrew/Cellar/node/26.5.0/bin/node},'
++  '2026-07-27 15:40:02.001 Df tccd[79149:c81551c] [com.apple.TCC:access] AUTHREQ_PROMPTING: msgID=80871.99, service=kTCCServiceSystemPolicyAppData, subject=Sub:{node-5555494487fbc7467d473fd8b0a397018cbf954b}Resp:{TCCDProcess: identifier=art.arcane.orca.configured, pid=47548, auid=501, euid=501, binary_path=/opt/homebrew/Cellar/node/26.5.0/bin/node},'
+ 
+ // Preflight checks dominate the TCC subsystem and must never count as a dialog.
+ const PREFLIGHT_LINE =
+@@ -34,7 +34,7 @@ describe('parseTccPromptEvent', () => {
+   it('separates the accessing binary from the responsible app', () => {
+     const event = parseTccPromptEvent(ORCA_APPDATA_LINE)
+     // The whole point of #9756: the dialog says Orca, but node did the access.
+-    expect(event?.responsibleIdentifier).toBe('com.stablyai.orca')
++    expect(event?.responsibleIdentifier).toBe('art.arcane.orca.configured')
+     expect(event?.accessingIdentifier).toBe('node-5555494487fbc7467d473fd8b0a397018cbf954b')
+     expect(event?.binaryPath).toBe('/opt/homebrew/Cellar/node/26.5.0/bin/node')
+   })
+@@ -51,12 +51,12 @@ describe('parseTccPromptEvent', () => {
+ describe('isOrcaAttributedPrompt', () => {
+   it('accepts the app and detached terminal helper across Orca build identities', () => {
+     for (const id of [
+-      'com.stablyai.orca',
+-      'com.stablyai.orca.helper',
+-      'com.stablyai.orca.dev',
+-      'com.stablyai.orca.dev.helper',
+-      'com.stablyai.orca.local',
+-      'com.stablyai.orca.local.helper'
++      'art.arcane.orca.configured',
++      'art.arcane.orca.configured.helper',
++      'art.arcane.orca.configured.dev',
++      'art.arcane.orca.configured.dev.helper',
++      'art.arcane.orca.configured.local',
++      'art.arcane.orca.configured.local.helper'
+     ]) {
+       expect(
+         isOrcaAttributedPrompt({
+@@ -83,7 +83,7 @@ describe('isOrcaAttributedPrompt', () => {
+       isOrcaAttributedPrompt({
+         service: 'kTCCServiceMicrophone',
+         accessingIdentifier: 'orca',
+-        responsibleIdentifier: 'com.stablyai.orca'
++        responsibleIdentifier: 'art.arcane.orca.configured'
+       })
+     ).toBe(false)
+   })
+@@ -152,7 +152,7 @@ describe('MacosTccPromptWatch', () => {
+     expect(onPrompt).toHaveBeenCalledTimes(1)
+     expect(onPrompt.mock.calls[0][0]).toMatchObject({
+       service: 'kTCCServiceSystemPolicyAppData',
+-      responsibleIdentifier: 'com.stablyai.orca'
++      responsibleIdentifier: 'art.arcane.orca.configured'
+     })
+     watch.stop()
+   })
+diff --git a/src/main/macos-tcc-prompt-watch.ts b/src/main/macos-tcc-prompt-watch.ts
+index acff095a82babe8d15c8b5732c0a88155c874ad0..58b9a77e1e66824902da9c7937524d3fb0944ae4 100644
+--- a/src/main/macos-tcc-prompt-watch.ts
++++ b/src/main/macos-tcc-prompt-watch.ts
+@@ -19,12 +19,12 @@ export type LogStreamChild = ChildProcessByStdio<null, Readable, Readable>
+ 
+ /** Why: terminals run from the detached helper, which TCC can hold responsible independently. */
+ const ORCA_RESPONSIBLE_IDENTIFIERS = new Set([
+-  'com.stablyai.orca',
+-  'com.stablyai.orca.helper',
+-  'com.stablyai.orca.dev',
+-  'com.stablyai.orca.dev.helper',
+-  'com.stablyai.orca.local',
+-  'com.stablyai.orca.local.helper'
++  'art.arcane.orca.configured',
++  'art.arcane.orca.configured.helper',
++  'art.arcane.orca.configured.dev',
++  'art.arcane.orca.configured.dev.helper',
++  'art.arcane.orca.configured.local',
++  'art.arcane.orca.configured.local.helper'
+ ])
+ 
+ /** Why: the prompt classes #9756 is about — other-apps' data plus the protected home folders agents sweep. */
+diff --git a/src/main/startup/dev-instance-identity.test.ts b/src/main/startup/dev-instance-identity.test.ts
+index 2b06e85dda4b87f0902dea3f5bb9cfd257c43c8f..8242151a8f5cb5d21304bd19cfe100aa636728be 100644
+--- a/src/main/startup/dev-instance-identity.test.ts
++++ b/src/main/startup/dev-instance-identity.test.ts
+@@ -3,13 +3,16 @@ import { getDevInstanceIdentity } from './dev-instance-identity'
+ 
+ describe('dev-instance-identity', () => {
+   it('keeps packaged identity stable', () => {
++    // Fork: 'Orca Configured' (not 'Orca') — app name drives Electron's default
++    // userData path and single-instance lock, which must not collide with an
++    // official Orca install on case-insensitive filesystems.
+     expect(getDevInstanceIdentity(false, {})).toMatchObject({
+-      name: 'Orca',
+-      appName: 'Orca',
++      name: 'Orca Configured',
++      appName: 'Orca Configured',
+       isDev: false,
+       devLabel: null,
+       dockBadgeLabel: null,
+-      appUserModelId: 'com.stablyai.orca'
++      appUserModelId: 'art.arcane.orca.configured'
+     })
+   })
+ 
+@@ -20,9 +23,9 @@ describe('dev-instance-identity', () => {
+     // Per-branch label differs (window title / app menu)...
+     expect(a.name).not.toBe(b.name)
+     // ...but the Keychain-driving appName is identical and distinct from prod.
+-    expect(a.appName).toBe('Orca Dev')
+-    expect(b.appName).toBe('Orca Dev')
+-    expect(a.appName).not.toBe('Orca')
++    expect(a.appName).toBe('Orca Configured Dev')
++    expect(b.appName).toBe('Orca Configured Dev')
++    expect(a.appName).not.toBe('Orca Configured')
+   })
+ 
+   it('derives a readable dev label from worktree and branch env', () => {
+@@ -39,9 +42,9 @@ describe('dev-instance-identity', () => {
+       devWorktreeName: 'dev-indicator',
+       devRepoRoot: '/repo/worktrees/dev-indicator'
+     })
+-    expect(identity.name).toBe('Orca: nwparker/dev-indicator')
++    expect(identity.name).toBe('Orca Configured: nwparker/dev-indicator')
+     expect(identity.dockBadgeLabel).toBeNull()
+-    expect(identity.appUserModelId).toMatch(/^com\.stablyai\.orca\.dev\.[a-f0-9]{10}$/)
++    expect(identity.appUserModelId).toMatch(/^art\.arcane\.orca\.configured\.dev\.[a-f0-9]{10}$/)
+   })
+ 
+   it('includes the branch when it differs from the worktree basename', () => {
+@@ -52,7 +55,7 @@ describe('dev-instance-identity', () => {
+     })
+ 
+     expect(identity.devLabel).toBe('payment-ui @ feature/billing-shell')
+-    expect(identity.name).toBe('Orca: feature/billing-shell')
++    expect(identity.name).toBe('Orca Configured: feature/billing-shell')
+     expect(identity.dockBadgeLabel).toBeNull()
+   })
+ 
+@@ -64,7 +67,7 @@ describe('dev-instance-identity', () => {
+     })
+ 
+     expect(identity.devLabel).toBe('manual label')
+-    expect(identity.name).toBe('Orca: feature/other')
++    expect(identity.name).toBe('Orca Configured: feature/other')
+     expect(identity.dockBadgeLabel).toBeNull()
+   })
+ })
+diff --git a/src/main/startup/dev-instance-identity.ts b/src/main/startup/dev-instance-identity.ts
+index 6d13541ea1f8d19482c07fee8ff6819275b702ad..f3aa07788d60e94414af47bf9c08a7c1f9752f64 100644
+--- a/src/main/startup/dev-instance-identity.ts
++++ b/src/main/startup/dev-instance-identity.ts
+@@ -2,8 +2,11 @@ import { createHash } from 'node:crypto'
+ import path from 'node:path'
+ import type { AppIdentity } from '../../shared/app-identity'
+ 
+-const BASE_APP_NAME = 'Orca'
+-const BASE_APP_USER_MODEL_ID = 'com.stablyai.orca'
++// Fork: distinct from official Orca — this name drives Electron's default
++// userData path and the single-instance lock, so 'Orca' would collide with an
++// official install on case-insensitive filesystems and refuse to launch.
++const BASE_APP_NAME = 'Orca Configured'
++const BASE_APP_USER_MODEL_ID = 'art.arcane.orca.configured'
+ const MAX_LABEL_LENGTH = 80
+ 
+ export type DevInstanceIdentity = AppIdentity & {
+diff --git a/src/main/updater-prerelease-feed-readiness.test.ts b/src/main/updater-prerelease-feed-readiness.test.ts
+index 34340c0717e979856df40784b2a8709e68daa696..28d379559de0d7c9900fb02e8dca617cb4ec5caf 100644
+--- a/src/main/updater-prerelease-feed-readiness.test.ts
++++ b/src/main/updater-prerelease-feed-readiness.test.ts
+@@ -13,7 +13,7 @@ function buildAtomFeed(tags: string[]): string {
+   return `<?xml version="1.0" encoding="UTF-8"?><feed>${tags
+     .map(
+       (tag) =>
+-        `<entry><link rel="alternate" type="text/html" href="https://github.com/stablyai/orca/releases/tag/${tag}"/><title>${tag}</title></entry>`
++        `<entry><link rel="alternate" type="text/html" href="https://github.com/NextdoorPsycho/orca-configured/releases/tag/${tag}"/><title>${tag}</title></entry>`
+     )
+     .join('')}</feed>`
+ }
+@@ -44,7 +44,7 @@ function respondWithAtom(
+   const missingAssets = new Set(missingAssetTags)
+   const unavailableManifests = new Set(unavailableManifestTags)
+   netFetchMock.mockImplementation((url: string, init?: { method?: string }) => {
+-    if (url === 'https://github.com/stablyai/orca/releases.atom') {
++    if (url === 'https://github.com/NextdoorPsycho/orca-configured/releases.atom') {
+       return Promise.resolve({
+         ok: true,
+         status: 200,
+@@ -178,7 +178,7 @@ describe('fetchNewerReleaseTagsWithReadiness', () => {
+ 
+   it('reports transport failures as unavailable instead of not-ready', async () => {
+     netFetchMock.mockImplementation((url: string) => {
+-      if (url === 'https://github.com/stablyai/orca/releases.atom') {
++      if (url === 'https://github.com/NextdoorPsycho/orca-configured/releases.atom') {
+         return Promise.resolve({
+           ok: true,
+           status: 200,
+@@ -199,7 +199,7 @@ describe('fetchNewerReleaseTagsWithReadiness', () => {
+ 
+   it('requires every asset referenced by the manifest files list to be reachable', async () => {
+     netFetchMock.mockImplementation((url: string, init?: { method?: string }) => {
+-      if (url === 'https://github.com/stablyai/orca/releases.atom') {
++      if (url === 'https://github.com/NextdoorPsycho/orca-configured/releases.atom') {
+         return Promise.resolve({
+           ok: true,
+           status: 200,
+@@ -255,7 +255,7 @@ describe('fetchNewerReleaseTagsWithReadiness', () => {
+ 
+   it('treats an explicit asset 404 as not-ready when another asset is unavailable', async () => {
+     netFetchMock.mockImplementation((url: string, init?: { method?: string }) => {
+-      if (url === 'https://github.com/stablyai/orca/releases.atom') {
++      if (url === 'https://github.com/NextdoorPsycho/orca-configured/releases.atom') {
+         return Promise.resolve({
+           ok: true,
+           status: 200,
+@@ -301,7 +301,7 @@ describe('fetchNewerReleaseTagsWithReadiness', () => {
+   it('accepts absolute manifest asset URLs without rewriting them to release asset paths', async () => {
+     const assetUrls: string[] = []
+     netFetchMock.mockImplementation((url: string, init?: { method?: string }) => {
+-      if (url === 'https://github.com/stablyai/orca/releases.atom') {
++      if (url === 'https://github.com/NextdoorPsycho/orca-configured/releases.atom') {
+         return Promise.resolve({
+           ok: true,
+           status: 200,
+@@ -340,7 +340,7 @@ describe('fetchNewerReleaseTagsWithReadiness', () => {
+ 
+   it('treats malformed updater manifests as not ready', async () => {
+     netFetchMock.mockImplementation((url: string, init?: { method?: string }) => {
+-      if (url === 'https://github.com/stablyai/orca/releases.atom') {
++      if (url === 'https://github.com/NextdoorPsycho/orca-configured/releases.atom') {
+         return Promise.resolve({
+           ok: true,
+           text: () => Promise.resolve(buildAtomFeed(['v1.4.28', 'v1.4.27']))
+diff --git a/src/main/updater-prerelease-feed.test.ts b/src/main/updater-prerelease-feed.test.ts
+index bef53427e223d8359b042c6f2df55092cbc5e201..628c82da58f53a63b3e13242b9f365b76513aeb1 100644
+--- a/src/main/updater-prerelease-feed.test.ts
++++ b/src/main/updater-prerelease-feed.test.ts
+@@ -14,7 +14,7 @@ function buildAtomFeed(tags: string[]): string {
+   const entries = tags
+     .map(
+       (tag) =>
+-        `<entry><link rel="alternate" type="text/html" href="https://github.com/stablyai/orca/releases/tag/${tag}"/><title>${tag}</title></entry>`
++        `<entry><link rel="alternate" type="text/html" href="https://github.com/NextdoorPsycho/orca-configured/releases/tag/${tag}"/><title>${tag}</title></entry>`
+     )
+     .join('')
+   return `<?xml version="1.0" encoding="UTF-8"?><feed>${entries}</feed>`
+@@ -41,7 +41,7 @@ function respondWithAtom(
+   const missingAssets = new Set(missingAssetTags)
+   const unavailableManifests = new Set(unavailableManifestTags)
+   netFetchMock.mockImplementation((url: string, init?: { method?: string }) => {
+-    if (url === 'https://github.com/stablyai/orca/releases.atom') {
++    if (url === 'https://github.com/NextdoorPsycho/orca-configured/releases.atom') {
+       return Promise.resolve({
+         ok: true,
+         text: () => Promise.resolve(buildAtomFeed(tags))
+@@ -125,7 +125,7 @@ describe('fetchNewerReleaseTag', () => {
+       const assetUrls: string[] = []
+ 
+       netFetchMock.mockImplementation((url: string, init?: { method?: string }) => {
+-        if (url === 'https://github.com/stablyai/orca/releases.atom') {
++        if (url === 'https://github.com/NextdoorPsycho/orca-configured/releases.atom') {
+           return Promise.resolve({
+             ok: true,
+             text: () => Promise.resolve(buildAtomFeed(['v1.4.1']))
+@@ -153,10 +153,10 @@ describe('fetchNewerReleaseTag', () => {
+ 
+       expect(await fetchNewerReleaseTag('1.4.0')).toBe('v1.4.1')
+       expect(manifestUrls).toEqual([
+-        `https://github.com/stablyai/orca/releases/download/v1.4.1/${manifestName}`
++        `https://github.com/NextdoorPsycho/orca-configured/releases/download/v1.4.1/${manifestName}`
+       ])
+       expect(assetUrls).toEqual([
+-        'https://github.com/stablyai/orca/releases/download/v1.4.1/Orca-1.4.1-arm64-mac.zip'
++        'https://github.com/NextdoorPsycho/orca-configured/releases/download/v1.4.1/Orca-1.4.1-arm64-mac.zip'
+       ])
+     }
+   )
+@@ -360,7 +360,7 @@ describe('fetchNewerReleaseTag', () => {
+     const manifestResolvers: (() => void)[] = []
+ 
+     netFetchMock.mockImplementation((url: string) => {
+-      if (url === 'https://github.com/stablyai/orca/releases.atom') {
++      if (url === 'https://github.com/NextdoorPsycho/orca-configured/releases.atom') {
+         return Promise.resolve({
+           ok: true,
+           text: () => Promise.resolve(buildAtomFeed(feedTags))
+diff --git a/src/main/updater-prerelease-feed.ts b/src/main/updater-prerelease-feed.ts
+index 6365ccb653de0a7a2445217099c1143a797ee976..6cb7ec97349f1c20ccc5c73de09ff037333dad45 100644
+--- a/src/main/updater-prerelease-feed.ts
++++ b/src/main/updater-prerelease-feed.ts
+@@ -2,15 +2,16 @@ import { net } from 'electron'
+ import { parse } from 'yaml'
+ import { compareVersions, isPrereleaseVersion, isValidVersion } from './updater-fallback'
+ 
+-const ATOM_FEED_URL = 'https://github.com/stablyai/orca/releases.atom'
+-const RELEASES_DOWNLOAD_BASE = 'https://github.com/stablyai/orca/releases/download'
++const ATOM_FEED_URL = 'https://github.com/NextdoorPsycho/orca-configured/releases.atom'
++const RELEASES_DOWNLOAD_BASE = 'https://github.com/NextdoorPsycho/orca-configured/releases/download'
+ const FETCH_TIMEOUT_MS = 5000
+ const MAX_MANIFEST_PROBE_CANDIDATES = 6
+ 
+ // Why: GitHub's atom feed lists every release (prerelease or stable) in a
+ // single flat list. Each entry has a /releases/tag/<tag> URL we can mine
+ // without any channel filtering.
+-const TAG_HREF_RE = /href="https:\/\/github\.com\/stablyai\/orca\/releases\/tag\/([^"]+)"/g
++const TAG_HREF_RE =
++  /href="https:\/\/github\.com\/NextdoorPsycho\/orca-configured\/releases\/tag\/([^"]+)"/g
+ 
+ export function getReleaseDownloadUrl(tag: string): string {
+   return `${RELEASES_DOWNLOAD_BASE}/${encodeURIComponent(tag)}`
+diff --git a/src/main/updater-release-builds.test.ts b/src/main/updater-release-builds.test.ts
+index b9344954a5a83aa47227df6ceaf9757eef7d90bc..9dd4bef3a5efa6a6b2b114ee1a6043d1e27236a6 100644
+--- a/src/main/updater-release-builds.test.ts
++++ b/src/main/updater-release-builds.test.ts
+@@ -126,7 +126,7 @@ describe('resolveTargetBuild', () => {
+ 
+   it('pins a stable tag at the main repo download path', () => {
+     expect(resolveTargetBuild('stable', 'v1.4.159').feedUrl).toBe(
+-      'https://github.com/stablyai/orca/releases/download/v1.4.159'
++      'https://github.com/NextdoorPsycho/orca-configured/releases/download/v1.4.159'
+     )
+   })
+ 
+diff --git a/src/main/updater.check-failure.test.ts b/src/main/updater.check-failure.test.ts
+index c17dfef4c24c9a6bed98ddd4786d2611bc5827b8..456eaecf249ddff731de7c5f1750c390f77d3b7d 100644
+--- a/src/main/updater.check-failure.test.ts
++++ b/src/main/updater.check-failure.test.ts
+@@ -120,11 +120,11 @@ function respondWithNotReadyRelease({
+   const atom = `<feed>${publishingIncident.atomTags
+     .map(
+       (tag) =>
+-        `<entry><link rel="alternate" type="text/html" href="https://github.com/stablyai/orca/releases/tag/${tag}"/><title>${tag}</title></entry>`
++        `<entry><link rel="alternate" type="text/html" href="https://github.com/NextdoorPsycho/orca-configured/releases/tag/${tag}"/><title>${tag}</title></entry>`
+     )
+     .join('')}</feed>`
+   netFetchMock.mockImplementation((url: string, init?: { method?: string }) => {
+-    if (url === 'https://github.com/stablyai/orca/releases.atom') {
++    if (url === 'https://github.com/NextdoorPsycho/orca-configured/releases.atom') {
+       return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(atom) })
+     }
+     if (init?.method === 'HEAD' && assetStatus !== undefined) {
+diff --git a/src/main/updater.test.ts b/src/main/updater.test.ts
+index dce8b39a7b6d70f2f44f43e5682f553225fc3ad6..4cb03d4fbfa9844aeb271f633ad5a34de1602f37 100644
+--- a/src/main/updater.test.ts
++++ b/src/main/updater.test.ts
+@@ -238,7 +238,7 @@ vi.mock('./updater-prerelease-feed', () => ({
+       : result
+   },
+   getReleaseDownloadUrl: (tag: string) =>
+-    `https://github.com/stablyai/orca/releases/download/${tag}`
++    `https://github.com/NextdoorPsycho/orca-configured/releases/download/${tag}`
+ }))
+ 
+ vi.mock('./local-builds/local-build-switch', () => ({
+@@ -417,7 +417,7 @@ describe('updater', () => {
+       expect(autoUpdaterMock.disableDifferentialDownload).toBe(false)
+       expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
+         provider: 'generic',
+-        url: 'https://github.com/stablyai/orca/releases/latest/download'
++        url: 'https://github.com/NextdoorPsycho/orca-configured/releases/latest/download'
+       })
+     }
+   )
+@@ -460,7 +460,7 @@ describe('updater', () => {
+       })
+       expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
+         provider: 'generic',
+-        url: 'https://github.com/stablyai/orca/releases/latest/download'
++        url: 'https://github.com/NextdoorPsycho/orca-configured/releases/latest/download'
+       })
+     }
+   )
+@@ -500,7 +500,7 @@ describe('updater', () => {
+       })
+       expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
+         provider: 'generic',
+-        url: 'https://github.com/stablyai/orca/releases/latest/download'
++        url: 'https://github.com/NextdoorPsycho/orca-configured/releases/latest/download'
+       })
+     }
+   )
+@@ -557,7 +557,7 @@ describe('updater', () => {
+       expect(send).toHaveBeenCalledWith('updater:status', { state: 'not-available' })
+       expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
+         provider: 'generic',
+-        url: 'https://github.com/stablyai/orca/releases/latest/download'
++        url: 'https://github.com/NextdoorPsycho/orca-configured/releases/latest/download'
+       })
+     }
+   )
+@@ -603,7 +603,7 @@ describe('updater', () => {
+       })
+       expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
+         provider: 'generic',
+-        url: 'https://github.com/stablyai/orca/releases/latest/download'
++        url: 'https://github.com/NextdoorPsycho/orca-configured/releases/latest/download'
+       })
+     }
+   )
+@@ -1386,7 +1386,7 @@ describe('updater', () => {
+     })
+     expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
+       provider: 'generic',
+-      url: 'https://github.com/stablyai/orca/releases/download/v1.4.36-rc.5'
++      url: 'https://github.com/NextdoorPsycho/orca-configured/releases/download/v1.4.36-rc.5'
+     })
+     expect(
+       sendMock.mock.calls
+@@ -1496,7 +1496,7 @@ describe('updater', () => {
+       })
+       expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
+         provider: 'generic',
+-        url: 'https://github.com/stablyai/orca/releases/download/v1.3.18-rc.1'
++        url: 'https://github.com/NextdoorPsycho/orca-configured/releases/download/v1.3.18-rc.1'
+       })
+       expect(autoUpdaterMock.checkForUpdates).toHaveBeenCalledTimes(1)
+     })
+@@ -1523,7 +1523,7 @@ describe('updater', () => {
+       })
+       expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
+         provider: 'generic',
+-        url: 'https://github.com/stablyai/orca/releases/download/v1.4.121-rc.6.perf'
++        url: 'https://github.com/NextdoorPsycho/orca-configured/releases/download/v1.4.121-rc.6.perf'
+       })
+       expect(autoUpdaterMock.checkForUpdates).toHaveBeenCalledTimes(1)
+     })
+@@ -1590,7 +1590,7 @@ describe('updater', () => {
+       })
+       expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
+         provider: 'generic',
+-        url: 'https://github.com/stablyai/orca/releases/download/v1.4.121'
++        url: 'https://github.com/NextdoorPsycho/orca-configured/releases/download/v1.4.121'
+       })
+     })
+   })
+@@ -2571,7 +2571,7 @@ describe('updater', () => {
+     // Setup pins the default generic feed; resolver only runs per check.
+     expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
+       provider: 'generic',
+-      url: 'https://github.com/stablyai/orca/releases/latest/download'
++      url: 'https://github.com/NextdoorPsycho/orca-configured/releases/latest/download'
+     })
+     expect(autoUpdaterMock.allowPrerelease).not.toBe(true)
+ 
+@@ -2583,7 +2583,7 @@ describe('updater', () => {
+       })
+       expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
+         provider: 'generic',
+-        url: 'https://github.com/stablyai/orca/releases/download/v1.3.17-rc.2'
++        url: 'https://github.com/NextdoorPsycho/orca-configured/releases/download/v1.3.17-rc.2'
+       })
+       expect(autoUpdaterMock.checkForUpdates).toHaveBeenCalledTimes(1)
+     })
+@@ -2605,7 +2605,7 @@ describe('updater', () => {
+     await vi.waitFor(() => {
+       expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
+         provider: 'generic',
+-        url: 'https://github.com/stablyai/orca/releases/download/v1.3.19'
++        url: 'https://github.com/NextdoorPsycho/orca-configured/releases/download/v1.3.19'
+       })
+     })
+     expect(autoUpdaterMock.allowPrerelease).not.toBe(true)
+@@ -2629,7 +2629,7 @@ describe('updater', () => {
+     })
+     expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
+       provider: 'generic',
+-      url: 'https://github.com/stablyai/orca/releases/latest/download'
++      url: 'https://github.com/NextdoorPsycho/orca-configured/releases/latest/download'
+     })
+   })
+ 
+@@ -2660,7 +2660,7 @@ describe('updater', () => {
+     expect(autoUpdaterMock.setFeedURL.mock.calls.slice(feedCallsBeforeCheck)).not.toContainEqual([
+       {
+         provider: 'generic',
+-        url: 'https://github.com/stablyai/orca/releases/latest/download'
++        url: 'https://github.com/NextdoorPsycho/orca-configured/releases/latest/download'
+       }
+     ])
+   })
+@@ -2684,7 +2684,7 @@ describe('updater', () => {
+     })
+     expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
+       provider: 'generic',
+-      url: 'https://github.com/stablyai/orca/releases/latest/download'
++      url: 'https://github.com/NextdoorPsycho/orca-configured/releases/latest/download'
+     })
+     expect(sendMock).not.toHaveBeenCalledWith(
+       'updater:status',
+@@ -2726,16 +2726,16 @@ describe('updater', () => {
+     expect(autoUpdaterMock.checkForUpdates).toHaveBeenCalledTimes(1)
+     expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
+       provider: 'generic',
+-      url: 'https://github.com/stablyai/orca/releases/download/v1.4.26'
++      url: 'https://github.com/NextdoorPsycho/orca-configured/releases/download/v1.4.26'
+     })
+     expect(autoUpdaterMock.setFeedURL).not.toHaveBeenCalledWith({
+       provider: 'generic',
+-      url: 'https://github.com/stablyai/orca/releases/download/v1.4.27'
++      url: 'https://github.com/NextdoorPsycho/orca-configured/releases/download/v1.4.27'
+     })
+     expect(autoUpdaterMock.setFeedURL.mock.calls.slice(feedCallsBeforeCheck)).not.toContainEqual([
+       {
+         provider: 'generic',
+-        url: 'https://github.com/stablyai/orca/releases/latest/download'
++        url: 'https://github.com/NextdoorPsycho/orca-configured/releases/latest/download'
+       }
+     ])
+     expect(sendMock).not.toHaveBeenCalledWith(
+@@ -2778,7 +2778,7 @@ describe('updater', () => {
+     })
+     expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
+       provider: 'generic',
+-      url: 'https://github.com/stablyai/orca/releases/download/v1.4.26'
++      url: 'https://github.com/NextdoorPsycho/orca-configured/releases/download/v1.4.26'
+     })
+   })
+ 
+@@ -2813,7 +2813,7 @@ describe('updater', () => {
+     })
+     expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
+       provider: 'generic',
+-      url: 'https://github.com/stablyai/orca/releases/download/v1.4.26'
++      url: 'https://github.com/NextdoorPsycho/orca-configured/releases/download/v1.4.26'
+     })
+     expect(setLastUpdateCheckAt).not.toHaveBeenCalled()
+ 
+@@ -2833,7 +2833,7 @@ describe('updater', () => {
+     })
+     expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
+       provider: 'generic',
+-      url: 'https://github.com/stablyai/orca/releases/download/v1.4.27'
++      url: 'https://github.com/NextdoorPsycho/orca-configured/releases/download/v1.4.27'
+     })
+   })
+ 
+@@ -2883,7 +2883,7 @@ describe('updater', () => {
+     })
+     expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
+       provider: 'generic',
+-      url: 'https://github.com/stablyai/orca/releases/download/v1.4.27'
++      url: 'https://github.com/NextdoorPsycho/orca-configured/releases/download/v1.4.27'
+     })
+   })
+ 
+@@ -2922,7 +2922,7 @@ describe('updater', () => {
+     })
+     expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
+       provider: 'generic',
+-      url: 'https://github.com/stablyai/orca/releases/download/v1.4.27'
++      url: 'https://github.com/NextdoorPsycho/orca-configured/releases/download/v1.4.27'
+     })
+   })
+ 
+@@ -3188,11 +3188,11 @@ describe('updater', () => {
+       expect(autoUpdaterMock.checkForUpdates).toHaveBeenCalledTimes(2)
+       expect(autoUpdaterMock.setFeedURL).toHaveBeenCalledWith({
+         provider: 'generic',
+-        url: 'https://github.com/stablyai/orca/releases/download/v1.3.51-rc.7'
++        url: 'https://github.com/NextdoorPsycho/orca-configured/releases/download/v1.3.51-rc.7'
+       })
+       expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
+         provider: 'generic',
+-        url: 'https://github.com/stablyai/orca/releases/download/v1.3.51-rc.6'
++        url: 'https://github.com/NextdoorPsycho/orca-configured/releases/download/v1.3.51-rc.6'
+       })
+     })
+ 
+@@ -3818,7 +3818,7 @@ describe('updater', () => {
+     })
+     expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
+       provider: 'generic',
+-      url: 'https://github.com/stablyai/orca/releases/download/v1.3.18'
++      url: 'https://github.com/NextdoorPsycho/orca-configured/releases/download/v1.3.18'
+     })
+   })
+ 
+@@ -3844,7 +3844,7 @@ describe('updater', () => {
+     expect(autoUpdaterMock.allowPrerelease).toBe(true)
+     expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
+       provider: 'generic',
+-      url: 'https://github.com/stablyai/orca/releases/download/v1.3.18-rc.1'
++      url: 'https://github.com/NextdoorPsycho/orca-configured/releases/download/v1.3.18-rc.1'
+     })
+   })
+ 
+diff --git a/src/main/updater.ts b/src/main/updater.ts
+index 96bf163e54e9bbd4ea71e6de8d59b6dd852b2596..a4760c7ac591fd329b563fa5f4f0daea8165c3b6 100644
+--- a/src/main/updater.ts
++++ b/src/main/updater.ts
+@@ -1437,7 +1437,7 @@ async function pinDefaultReleaseFeed(
+   } else {
+     clearPrereleaseFallbackContext()
+     clearPublishingWindowLastGoodCheck()
+-    const url = 'https://github.com/stablyai/orca/releases/latest/download'
++    const url = 'https://github.com/NextdoorPsycho/orca-configured/releases/latest/download'
+     console.info(
+       `[updater] release feed fallback: current=${currentVersion} includePrerelease=${includePrerelease} → ${url}`
+     )
+@@ -2202,7 +2202,7 @@ export function setupAutoUpdater(
+   if (activeUpdateSource === 'release') {
+     autoUpdater.setFeedURL({
+       provider: 'generic',
+-      url: 'https://github.com/stablyai/orca/releases/latest/download'
++      url: 'https://github.com/NextdoorPsycho/orca-configured/releases/latest/download'
+     })
+   }
+ 
+diff --git a/src/renderer/src/components/UpdateCard.error-card.test.tsx b/src/renderer/src/components/UpdateCard.error-card.test.tsx
+index 4e4aec4d2b5e122ffb1d4dabbed139ef1f8e1d83..9c14f7f93533c20dc2c9b5ed1174934016a02a57 100644
+--- a/src/renderer/src/components/UpdateCard.error-card.test.tsx
++++ b/src/renderer/src/components/UpdateCard.error-card.test.tsx
+@@ -103,7 +103,9 @@ describe('UpdateCard Windows signature failures', () => {
+     expect(screen.queryByText(message)).toBeNull()
+ 
+     fireEvent.click(screen.getByRole('button', { name: 'Check official releases' }))
+-    expect(openUrl).toHaveBeenCalledWith('https://github.com/stablyai/orca/releases')
++    expect(openUrl).toHaveBeenCalledWith(
++      'https://github.com/NextdoorPsycho/orca-configured/releases'
++    )
+     expect(openUrl).not.toHaveBeenCalledWith(expect.stringContaining('/tag/'))
+   })
+ 
+@@ -259,7 +261,9 @@ describe('UpdateCard Linux package-install recovery', () => {
+     await flushActions()
+ 
+     fireEvent.click(screen.getByRole('button', { name: 'Download Manually' }))
+-    expect(openUrl).toHaveBeenCalledWith('https://github.com/stablyai/orca/releases/tag/v1.4.200')
++    expect(openUrl).toHaveBeenCalledWith(
++      'https://github.com/NextdoorPsycho/orca-configured/releases/tag/v1.4.200'
++    )
+   })
+ 
+   it('keeps generic errors on the generic card when no recovery is attached', () => {
+diff --git a/src/shared/local-build-compatibility-contract.json b/src/shared/local-build-compatibility-contract.json
+index d7b46db0959abff1c42bcf58fccb7ad8e89fd0ad..a3d860bd95c3396c4178ede7fdf6af70acb02593 100644
+--- a/src/shared/local-build-compatibility-contract.json
++++ b/src/shared/local-build-compatibility-contract.json
+@@ -1,6 +1,6 @@
+ {
+   "formatVersion": 1,
+-  "appId": "com.stablyai.orca",
++  "appId": "art.arcane.orca.configured",
+   "stateSchemaVersion": 1,
+   "readableStateSchemaVersions": [1],
+   "daemonProtocolVersion": 32,
+diff --git a/src/shared/local-build-compatibility-contract.ts b/src/shared/local-build-compatibility-contract.ts
+index 07bbacd3d3aed95e10cf545f7f76306889c59b65..f8036e8a3feaeed9ac086fcca9aecb046f203cbf 100644
+--- a/src/shared/local-build-compatibility-contract.ts
++++ b/src/shared/local-build-compatibility-contract.ts
+@@ -1,6 +1,6 @@
+ export const LOCAL_BUILD_COMPATIBILITY_CONTRACT = {
+   formatVersion: 1,
+-  appId: 'com.stablyai.orca',
++  appId: 'art.arcane.orca.configured',
+   stateSchemaVersion: 1,
+   readableStateSchemaVersions: [1],
+   daemonProtocolVersion: 32,
+diff --git a/src/shared/local-build-compatibility.test.ts b/src/shared/local-build-compatibility.test.ts
+index 45f9a21ae33ef8033c486b911edbd76860e3e4c0..22f4b1eb0ec6fd507e705d6c24f00c6a306a7ee1 100644
+--- a/src/shared/local-build-compatibility.test.ts
++++ b/src/shared/local-build-compatibility.test.ts
+@@ -8,7 +8,7 @@ import {
+ function target(overrides: Partial<LocalBuildCompatibility> = {}): LocalBuildCompatibility {
+   return {
+     formatVersion: 1,
+-    appId: 'com.stablyai.orca',
++    appId: 'art.arcane.orca.configured',
+     buildId: '1.2.3-abc-arm64',
+     version: '1.2.3-local.1.abc',
+     commit: 'abc',
+diff --git a/src/shared/release-channel.test.ts b/src/shared/release-channel.test.ts
+index a12cc94c929ad7a74fde058def2dac59fbfd4251..1048509cbddae981341155daf1ac9422da877546 100644
+--- a/src/shared/release-channel.test.ts
++++ b/src/shared/release-channel.test.ts
+@@ -36,8 +36,8 @@ describe('release channel', () => {
+     // Why adhoc gets a third repo rather than sharing hourly's: an unlanded
+     // branch build must never surface to someone who only meant to ride main.
+     expect(getReleaseRepoForChannel('adhoc')).toBe('stablyai/orca-adhoc')
+-    expect(getReleaseRepoForChannel('stable')).toBe('stablyai/orca')
+-    expect(getReleaseRepoForChannel('rc')).toBe('stablyai/orca')
++    expect(getReleaseRepoForChannel('stable')).toBe('NextdoorPsycho/orca-configured')
++    expect(getReleaseRepoForChannel('rc')).toBe('NextdoorPsycho/orca-configured')
+   })
+ 
+   it('marks exactly the dev channels as having their own repo', () => {
+@@ -54,15 +54,17 @@ describe('release channel', () => {
+       'https://github.com/stablyai/orca-hourly/releases/tag/v1.4.160-hourly.202607281400'
+     )
+     expect(getReleaseNotesUrlForVersion('1.4.160')).toBe(
+-      'https://github.com/stablyai/orca/releases/tag/v1.4.160'
++      'https://github.com/NextdoorPsycho/orca-configured/releases/tag/v1.4.160'
+     )
+     expect(getReleaseNotesUrlForVersion('v1.4.160-rc.3')).toBe(
+-      'https://github.com/stablyai/orca/releases/tag/v1.4.160-rc.3'
++      'https://github.com/NextdoorPsycho/orca-configured/releases/tag/v1.4.160-rc.3'
+     )
+     expect(getReleaseNotesUrlForVersion('1.4.160-adhoc.20260728140533')).toBe(
+       'https://github.com/stablyai/orca-adhoc/releases/tag/v1.4.160-adhoc.20260728140533'
+     )
+-    expect(getReleaseNotesUrlForVersion(null)).toBe('https://github.com/stablyai/orca/releases')
++    expect(getReleaseNotesUrlForVersion(null)).toBe(
++      'https://github.com/NextdoorPsycho/orca-configured/releases'
++    )
+   })
+ 
+   it('round-trips an hourly version stamp as UTC', () => {
+@@ -132,12 +134,12 @@ describe('release channel', () => {
+     expect(parseDevBuildStamp('1.4.160')).toBeNull()
+   })
+ 
+-  // Why: both dev workflows are macOS-only, so the channels have no artifact to
+-  // offer elsewhere. Both the picker and the main-process check read this, so a
+-  // regression here would silently re-expose an uninstallable channel.
+-  it('offers the dev channels only on macOS', () => {
++  // Why: the fork ships no dev channels — upstream's hourly/adhoc repos carry
++  // com.stablyai.orca builds Squirrel.Mac cannot swap onto this fork's bundle
++  // identity, so exposing them would strand the updater mid-swap.
++  it('offers the dev channels nowhere on the fork', () => {
+     for (const channel of ['hourly', 'adhoc'] as const) {
+-      expect(isChannelSupportedOnPlatform(channel, 'darwin')).toBe(true)
++      expect(isChannelSupportedOnPlatform(channel, 'darwin')).toBe(false)
+       expect(isChannelSupportedOnPlatform(channel, 'linux')).toBe(false)
+       expect(isChannelSupportedOnPlatform(channel, 'win32')).toBe(false)
+     }
+diff --git a/src/shared/release-channel.ts b/src/shared/release-channel.ts
+index 743ef6529f3143adbcf1d2a94aaf4f145a43133f..ce2816ea6e7c100c15fa94a4dc2b22aac1e9a18c 100644
+--- a/src/shared/release-channel.ts
++++ b/src/shared/release-channel.ts
+@@ -16,7 +16,7 @@ export const RELEASE_CHANNEL_LABELS: Readonly<Record<ReleaseChannel, string>> =
+  *  tags a day would evict every stable/RC entry and strand real users. */
+ export const HOURLY_RELEASE_REPO = 'stablyai/orca-hourly'
+ export const ADHOC_RELEASE_REPO = 'stablyai/orca-adhoc'
+-export const MAIN_RELEASE_REPO = 'stablyai/orca'
++export const MAIN_RELEASE_REPO = 'NextdoorPsycho/orca-configured'
+ 
+ export const HOURLY_PRERELEASE_IDENTIFIER = 'hourly'
+ export const ADHOC_PRERELEASE_IDENTIFIER = 'adhoc'
+@@ -47,17 +47,15 @@ export function hasDedicatedReleaseRepo(channel: ReleaseChannel): channel is Ded
+  * Shared so the picker, the main-process check, and any future surface cannot
+  * drift on where a channel is available.
+  *
+- * Why this rides on the dev-channel list: both dev channels are produced only by
+- * macOS workflows, so neither has an artifact to offer elsewhere. If one ever
+- * gains a Windows or Linux job, split the two concepts apart — they coincide
+- * today, but "published to its own repo" and "built for macOS only" are not the
+- * same claim.
++ * Fork: dev channels are disabled everywhere — hourly/adhoc repos stay upstream
++ * and serve com.stablyai.orca builds that Squirrel.Mac cannot swap onto this
++ * fork's bundle identity, so offering them would strand the updater mid-swap.
+  */
+ export function isChannelSupportedOnPlatform(
+   channel: ReleaseChannel,
+-  platform: NodeJS.Platform
++  _platform: NodeJS.Platform
+ ): boolean {
+-  return !hasDedicatedReleaseRepo(channel) || platform === 'darwin'
++  return !hasDedicatedReleaseRepo(channel)
+ }
+ 
+ export function getReleaseRepoForChannel(channel: ReleaseChannel): string {

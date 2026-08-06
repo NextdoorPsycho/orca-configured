@@ -1,0 +1,733 @@
+diff --git a/src/renderer/src/components/settings/ForkChangesPane.test.tsx b/src/renderer/src/components/settings/ForkChangesPane.test.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..790bec91a3af838608a9d5a3ad3924130a165eec
+--- /dev/null
++++ b/src/renderer/src/components/settings/ForkChangesPane.test.tsx
+@@ -0,0 +1,76 @@
++// @vitest-environment happy-dom
++
++import { act } from 'react'
++import { renderToStaticMarkup } from 'react-dom/server'
++import { createRoot, type Root } from 'react-dom/client'
++import { afterEach, describe, expect, it, vi } from 'vitest'
++import type { GlobalSettings } from '../../../../shared/types'
++import { getDefaultSettings } from '../../../../shared/constants'
++import { ForkChangesPane } from './ForkChangesPane'
++import { getForkChangesPaneSearchEntries } from './fork-changes-search'
++
++vi.mock('../../store', () => ({
++  useAppStore: (selector: (state: { settingsSearchQuery: string }) => unknown) =>
++    selector({ settingsSearchQuery: '' })
++}))
++
++afterEach(() => {
++  document.body.innerHTML = ''
++})
++
++async function renderForkChangesPane(args: {
++  updateSettings: (settings: Partial<GlobalSettings>) => void
++  settings?: GlobalSettings
++}): Promise<{ root: Root; container: HTMLDivElement }> {
++  const container = document.createElement('div')
++  document.body.appendChild(container)
++  const root = createRoot(container)
++  await act(async () => {
++    root.render(
++      <ForkChangesPane
++        settings={args.settings ?? getDefaultSettings('/tmp')}
++        updateSettings={args.updateSettings}
++      />
++    )
++  })
++  return { root, container }
++}
++
++describe('ForkChangesPane', () => {
++  it('renders an off-by-default unlimited tab width switch with a search entry', () => {
++    const settings = getDefaultSettings('/tmp')
++    const markup = renderToStaticMarkup(
++      <ForkChangesPane settings={settings} updateSettings={vi.fn()} />
++    )
++    const entry = getForkChangesPaneSearchEntries().find(
++      (searchEntry) => searchEntry.title === 'Unlimited tab width'
++    )
++
++    expect(settings.experimentalTerminalTabsUnlimitedWidth).toBe(false)
++    expect(markup).toContain('Unlimited tab width')
++    expect(markup).toContain('aria-checked="false"')
++    expect(getForkChangesPaneSearchEntries().map((searchEntry) => searchEntry.title)).toContain(
++      'Unlimited tab width'
++    )
++    expect(entry?.targetSectionId).toBe('fork-changes-unlimited-tab-width')
++  })
++
++  it('enables unlimited tab width through its switch', async () => {
++    const updateSettings = vi.fn()
++    const { root, container } = await renderForkChangesPane({ updateSettings })
++
++    const switchButton = container.querySelector<HTMLButtonElement>(
++      '#fork-changes-unlimited-tab-width button[role="switch"]'
++    )
++    if (!switchButton) {
++      throw new Error('Unlimited tab width switch was not rendered')
++    }
++
++    await act(async () => {
++      switchButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
++    })
++
++    expect(updateSettings).toHaveBeenCalledWith({ experimentalTerminalTabsUnlimitedWidth: true })
++    root.unmount()
++  })
++})
+diff --git a/src/renderer/src/components/settings/ForkChangesPane.tsx b/src/renderer/src/components/settings/ForkChangesPane.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..a522562b47bd76455af4700e8522ce46419ada5b
+--- /dev/null
++++ b/src/renderer/src/components/settings/ForkChangesPane.tsx
+@@ -0,0 +1,67 @@
++import type { GlobalSettings } from '../../../../shared/types'
++import { translate } from '@/i18n/i18n'
++import { Label } from '../ui/label'
++import { useAppStore } from '../../store'
++import { getForkChangesSearchEntry } from './fork-changes-search'
++import { matchesSettingsSearch } from './settings-search'
++import { SearchableSetting } from './SearchableSetting'
++import { SettingsSwitch } from './SettingsFormControls'
++
++type ForkChangesPaneProps = {
++  settings: GlobalSettings
++  updateSettings: (updates: Partial<GlobalSettings>) => void
++}
++
++// Fork-only pane: future fork tweaks get added here as more SearchableSetting rows.
++export function ForkChangesPane({
++  settings,
++  updateSettings
++}: ForkChangesPaneProps): React.JSX.Element {
++  const searchQuery = useAppStore((s) => s.settingsSearchQuery)
++  const unlimitedTabWidthEntry = getForkChangesSearchEntry().unlimitedTabWidth
++  const showUnlimitedTabWidth = matchesSettingsSearch(searchQuery, [unlimitedTabWidthEntry])
++  const unlimitedTabWidthEnabled = settings.experimentalTerminalTabsUnlimitedWidth === true
++
++  return (
++    <div className="space-y-4">
++      {showUnlimitedTabWidth ? (
++        <SearchableSetting
++          title={unlimitedTabWidthEntry.title}
++          description={unlimitedTabWidthEntry.description}
++          keywords={unlimitedTabWidthEntry.keywords}
++          className="space-y-3 py-2"
++          id="fork-changes-unlimited-tab-width"
++        >
++          <div className="flex items-start justify-between gap-4">
++            <div className="min-w-0 shrink space-y-0.5">
++              <Label>
++                {translate(
++                  'auto.components.settings.ForkChangesPane.unlimitedTabWidth.title',
++                  'Unlimited tab width'
++                )}
++              </Label>
++              <p className="text-xs text-muted-foreground">
++                {translate(
++                  'auto.components.settings.ForkChangesPane.unlimitedTabWidth.copy',
++                  'Remove the maximum width cap on terminal pane tabs so titles get all the space they need.'
++                )}
++              </p>
++            </div>
++            <SettingsSwitch
++              checked={unlimitedTabWidthEnabled}
++              ariaLabel={translate(
++                'auto.components.settings.ForkChangesPane.unlimitedTabWidth.toggleLabel',
++                'Toggle unlimited tab width'
++              )}
++              onChange={() =>
++                updateSettings({
++                  experimentalTerminalTabsUnlimitedWidth: !unlimitedTabWidthEnabled
++                })
++              }
++            />
++          </div>
++        </SearchableSetting>
++      ) : null}
++    </div>
++  )
++}
+diff --git a/src/renderer/src/components/settings/Settings.tsx b/src/renderer/src/components/settings/Settings.tsx
+index fe894fa07e6fefda622b50ecda61461b9de353f3..397f330f6d62fd8165b0fd0837a402f6ec1b689d 100644
+--- a/src/renderer/src/components/settings/Settings.tsx
++++ b/src/renderer/src/components/settings/Settings.tsx
+@@ -51,6 +51,7 @@ import { NotificationsPane } from './NotificationsPane'
+ import { VoicePane } from './VoicePane'
+ import { SshPane } from './SshPane'
+ import { ExperimentalPane } from './ExperimentalPane'
++import { ForkChangesPane } from './ForkChangesPane'
+ import { PluginsSettingsSection } from './PluginsSettingsSection'
+ import { AgentsPane } from './AgentsPane'
+ import { OrchestrationPane } from './OrchestrationPane'
+@@ -1790,6 +1791,23 @@ function Settings(): React.JSX.Element {
+                   ) : null}
+                 </SettingsSection>
+ 
++                <SettingsSection
++                  id="fork-changes"
++                  title={translate(
++                    'auto.components.settings.Settings.forkChangesTitle',
++                    'Fork Changes'
++                  )}
++                  description={translate(
++                    'auto.components.settings.Settings.forkChangesDescription',
++                    'Tweaks specific to this fork of Orca, layered on top of upstream.'
++                  )}
++                  searchEntries={getSectionSearchEntries('fork-changes')}
++                >
++                  {isSectionMounted('fork-changes') ? (
++                    <ForkChangesPane settings={settings} updateSettings={updateSettings} />
++                  ) : null}
++                </SettingsSection>
++
+                 {showDesktopOnlySettings ? (
+                   <PluginsSettingsSection
+                     mounted={isSectionMounted('plugins')}
+diff --git a/src/renderer/src/components/settings/fork-changes-search.ts b/src/renderer/src/components/settings/fork-changes-search.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..e2b7490ccf48b529efcce77d06b5bf503783e51d
+--- /dev/null
++++ b/src/renderer/src/components/settings/fork-changes-search.ts
+@@ -0,0 +1,59 @@
++import type { SettingsSearchEntry } from './settings-search'
++import { createLocalizedCatalog } from '@/i18n/localized-catalog'
++import { translate } from '@/i18n/i18n'
++import { translateSearchKeyword } from './settings-search-keywords'
++
++export const getForkChangesPaneSearchEntries = createLocalizedCatalog((): SettingsSearchEntry[] => [
++  {
++    title: translate(
++      'auto.components.settings.forkChanges.search.unlimitedTabWidthTitle',
++      'Unlimited tab width'
++    ),
++    description: translate(
++      'auto.components.settings.forkChanges.search.unlimitedTabWidthDescription',
++      'Remove the maximum width cap on terminal pane tabs so titles get all the space they need.'
++    ),
++    keywords: [
++      ...translateSearchKeyword('auto.components.settings.forkChanges.search.keywordFork', 'fork'),
++      ...translateSearchKeyword(
++        'auto.components.settings.forkChanges.search.keywordToggles',
++        'toggles'
++      ),
++      ...translateSearchKeyword('auto.components.settings.forkChanges.search.keywordTabs', 'tabs'),
++      ...translateSearchKeyword(
++        'auto.components.settings.forkChanges.search.keywordTabWidth',
++        'tab width'
++      ),
++      ...translateSearchKeyword(
++        'auto.components.settings.forkChanges.search.keywordUnlimited',
++        'unlimited'
++      ),
++      ...translateSearchKeyword(
++        'auto.components.settings.forkChanges.search.keywordTerminal',
++        'terminal'
++      )
++    ],
++    targetSectionId: 'fork-changes-unlimited-tab-width'
++  }
++])
++
++// Why: title-keyed lookup throws loudly on a typo/rename instead of silently
++// matching the wrong (or empty) entry — mirrors experimental-search.ts.
++function findEntry(title: string): SettingsSearchEntry {
++  const entry = getForkChangesPaneSearchEntries().find((e) => e.title === title)
++  if (!entry) {
++    throw new Error(`Missing fork-changes-pane search entry: "${title}"`)
++  }
++  return entry
++}
++
++export function getForkChangesSearchEntry(): { unlimitedTabWidth: SettingsSearchEntry } {
++  return {
++    unlimitedTabWidth: findEntry(
++      translate(
++        'auto.components.settings.forkChanges.search.unlimitedTabWidthTitle',
++        'Unlimited tab width'
++      )
++    )
++  } as const
++}
+diff --git a/src/renderer/src/components/tab-bar/BrowserTab.test.tsx b/src/renderer/src/components/tab-bar/BrowserTab.test.tsx
+index c1e994301b9a1cb038e750aaf5a78f8ed9e59499..16b57afc618bafac853f9cd685a18d4a541b3d34 100644
+--- a/src/renderer/src/components/tab-bar/BrowserTab.test.tsx
++++ b/src/renderer/src/components/tab-bar/BrowserTab.test.tsx
+@@ -41,6 +41,19 @@ vi.mock('@dnd-kit/sortable', () => ({
+   })
+ }))
+ 
++vi.mock('@/store', () => {
++  // Why: the alias and '../../store' resolve to the same module, so this mock also
++  // serves getState() consumers reached while the harness expands nested components.
++  const state = {
++    settings: null,
++    unifiedTabsByWorktree: {},
++    groupsByWorktree: {}
++  }
++  const useAppStore = (selector: (current: typeof state) => unknown): unknown => selector(state)
++  useAppStore.getState = (): typeof state => state
++  return { useAppStore }
++})
++
+ vi.mock('lucide-react', () => ({
+   ArrowDown: function ArrowDown(props: Record<string, unknown>) {
+     return { type: 'ArrowDown', props }
+diff --git a/src/renderer/src/components/tab-bar/BrowserTab.tsx b/src/renderer/src/components/tab-bar/BrowserTab.tsx
+index 87a268f75f9c133b7e06db60703498d20f60a575..0d35b1a24b23f87b890b7526c36ecdb4d713a440 100644
+--- a/src/renderer/src/components/tab-bar/BrowserTab.tsx
++++ b/src/renderer/src/components/tab-bar/BrowserTab.tsx
+@@ -34,7 +34,8 @@ import {
+ } from './drop-indicator'
+ import { preventMiddleButtonDefault } from './middle-button-default-guard'
+ import { translate } from '@/i18n/i18n'
+-import { TAB_CONTAINER_WIDTH_CLASSES, TAB_LABEL_WIDTH_CLASSES } from './tab-width-rules'
++import { useAppStore } from '@/store'
++import { getTabContainerWidthClasses, TAB_LABEL_WIDTH_CLASSES } from './tab-width-rules'
+ import { TabWorkspaceLayoutMenuSection } from './TabWorkspaceLayoutMenuSection'
+ import { useTabStripPointerActivation } from './tab-strip-pointer-activation'
+ import { TAB_CONTEXT_MENU_CONTENT_CLASS } from './tab-context-menu-sizing'
+@@ -156,6 +157,9 @@ export default function BrowserTab({
+   })
+   const [menuOpen, setMenuOpen] = useState(false)
+   const [menuPoint, setMenuPoint] = useState({ x: 0, y: 0 })
++  const unlimitedTabWidth = useAppStore(
++    (s) => s.settings?.experimentalTerminalTabsUnlimitedWidth === true
++  )
+ 
+   // Why: about:blank and other non-http URLs should not be sent to the
+   // system browser. Disable the context menu item instead of silently
+@@ -261,7 +265,7 @@ export default function BrowserTab({
+   return (
+     <>
+       <div
+-        className={TAB_CONTAINER_WIDTH_CLASSES}
++        className={getTabContainerWidthClasses(unlimitedTabWidth)}
+         onContextMenuCapture={(event) => {
+           event.preventDefault()
+           window.dispatchEvent(new Event(CLOSE_ALL_CONTEXT_MENUS_EVENT))
+diff --git a/src/renderer/src/components/tab-bar/EditorFileTab.tsx b/src/renderer/src/components/tab-bar/EditorFileTab.tsx
+index 4af4e4fcfc42365238f9bba02f4af86e6b7c3925..476b6c09511cec67e5e3ebed9c76f0cb415bfcab 100644
+--- a/src/renderer/src/components/tab-bar/EditorFileTab.tsx
++++ b/src/renderer/src/components/tab-bar/EditorFileTab.tsx
+@@ -28,7 +28,7 @@ import {
+ import { canOpenMarkdownPreview } from '@/components/editor/markdown-preview-controls'
+ import { EditorFileTabContextMenu } from './EditorFileTabContextMenu'
+ import { translate } from '@/i18n/i18n'
+-import { TAB_CONTAINER_WIDTH_CLASSES, TAB_LABEL_WIDTH_CLASSES } from './tab-width-rules'
++import { getTabContainerWidthClasses, TAB_LABEL_WIDTH_CLASSES } from './tab-width-rules'
+ import { EditorFileTabCloseButton } from './EditorFileTabCloseButton'
+ import { useTabStripPointerActivation } from './tab-strip-pointer-activation'
+ 
+@@ -105,6 +105,9 @@ export default function EditorFileTab({
+     diffSource: file.diffSource
+   })
+   const openMarkdownPreview = useAppStore((s) => s.openMarkdownPreview)
++  const unlimitedTabWidth = useAppStore(
++    (s) => s.settings?.experimentalTerminalTabsUnlimitedWidth === true
++  )
+   const [menuOpen, setMenuOpen] = useState(false)
+   const [menuPoint, setMenuPoint] = useState({ x: 0, y: 0 })
+   const [isRenaming, setIsRenaming] = useState(false)
+@@ -379,7 +382,7 @@ export default function EditorFileTab({
+   return (
+     <>
+       <div
+-        className={TAB_CONTAINER_WIDTH_CLASSES}
++        className={getTabContainerWidthClasses(unlimitedTabWidth)}
+         onContextMenuCapture={(event) => {
+           event.preventDefault()
+           window.dispatchEvent(new Event(CLOSE_ALL_CONTEXT_MENUS_EVENT))
+diff --git a/src/renderer/src/components/tab-bar/SortableTab.tsx b/src/renderer/src/components/tab-bar/SortableTab.tsx
+index b60473193f00a0418db818925a96deca302ff17c..200d015fd39c314a669ce0ba570ff350574e2ab0 100644
+--- a/src/renderer/src/components/tab-bar/SortableTab.tsx
++++ b/src/renderer/src/components/tab-bar/SortableTab.tsx
+@@ -19,7 +19,7 @@ import {
+ import { preventMiddleButtonDefault } from './middle-button-default-guard'
+ import { SortableTabContextMenu } from './SortableTabContextMenu'
+ import { translate } from '@/i18n/i18n'
+-import { TAB_CONTAINER_WIDTH_CLASSES, TAB_LABEL_WIDTH_CLASSES } from './tab-width-rules'
++import { getTabContainerWidthClasses, TAB_LABEL_WIDTH_CLASSES } from './tab-width-rules'
+ import { useOptionalShortcutLabel } from '@/hooks/useShortcutLabel'
+ import { useTabStripPointerActivation } from './tab-strip-pointer-activation'
+ import { TerminalTabLeadingIcon } from './TerminalTabLeadingIcon'
+@@ -106,6 +106,9 @@ export default function SortableTab({
+   )
+   const renamingTabId = useAppStore((s) => s.renamingTabId)
+   const setRenamingTabId = useAppStore((s) => s.setRenamingTabId)
++  const unlimitedTabWidth = useAppStore(
++    (s) => s.settings?.experimentalTerminalTabsUnlimitedWidth === true
++  )
+ 
+   // Why: shellOverride is stamped at create time, so changing the default shell later won't repaint existing tabs.
+   const shellForIcon = tab.shellOverride
+@@ -402,7 +405,7 @@ export default function SortableTab({
+   return (
+     <>
+       <div
+-        className={TAB_CONTAINER_WIDTH_CLASSES}
++        className={getTabContainerWidthClasses(unlimitedTabWidth)}
+         onContextMenuCapture={(event) => {
+           event.preventDefault()
+           window.dispatchEvent(new Event(CLOSE_ALL_CONTEXT_MENUS_EVENT))
+diff --git a/src/renderer/src/components/tab-bar/tab-title-tooltip.test.tsx b/src/renderer/src/components/tab-bar/tab-title-tooltip.test.tsx
+index e69e9ea18a354ccbf0e0fd4734424791c1c8f828..ad9df2b2e6e148f4e24e1671ed3f263b73b977cc 100644
+--- a/src/renderer/src/components/tab-bar/tab-title-tooltip.test.tsx
++++ b/src/renderer/src/components/tab-bar/tab-title-tooltip.test.tsx
+@@ -12,6 +12,7 @@ import type { TabDragItemData } from '../tab-group/useTabDragSplit'
+ import BrowserTab from './BrowserTab'
+ import EditorFileTab from './EditorFileTab'
+ import SortableTab from './SortableTab'
++import { getTabContainerWidthClasses } from './tab-width-rules'
+ 
+ let mockTabAgent: TuiAgent | null = null
+ 
+@@ -188,7 +189,7 @@ function textSpanHtml(markup: string, text: string): string {
+ 
+ function expectTabContainerWidth(markup: string, root: string): void {
+   const container = firstOpeningTag(markup)
+-  const widthClasses = 'min-w-[88px] max-w-[280px] flex-[1_1_180px] min-[1280px]:flex-[1_1_220px]'
++  const widthClasses = getTabContainerWidthClasses(false)
+   expect(container).toContain(widthClasses)
+   expect(root).not.toContain('min-w-[88px]')
+   expect(root).not.toContain('max-w-[280px]')
+diff --git a/src/renderer/src/components/tab-bar/tab-width-rules.test.ts b/src/renderer/src/components/tab-bar/tab-width-rules.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..9957d3d7883936a62e92525051814c3a8d4fce1e
+--- /dev/null
++++ b/src/renderer/src/components/tab-bar/tab-width-rules.test.ts
+@@ -0,0 +1,19 @@
++import { describe, expect, it } from 'vitest'
++import { getTabContainerWidthClasses } from './tab-width-rules'
++
++describe('getTabContainerWidthClasses', () => {
++  it('returns the capped width classes when unlimited width is off', () => {
++    expect(getTabContainerWidthClasses(false)).toBe(
++      'min-w-[88px] max-w-[280px] flex-[1_1_180px] min-[1280px]:flex-[1_1_220px]'
++    )
++  })
++
++  it('sizes tabs by title need with only the readable floor when unlimited width is on', () => {
++    expect(getTabContainerWidthClasses(true)).toBe('min-w-[88px] flex-[1_1_auto]')
++  })
++
++  it('keeps the readable minimum width in both variants', () => {
++    expect(getTabContainerWidthClasses(false)).toContain('min-w-[88px]')
++    expect(getTabContainerWidthClasses(true)).toContain('min-w-[88px]')
++  })
++})
+diff --git a/src/renderer/src/components/tab-bar/tab-width-rules.ts b/src/renderer/src/components/tab-bar/tab-width-rules.ts
+index 9001b6d780fdc2259f4727946e5c96c825d38c85..c962fbc7bc35118c54dafb3450b89e79260159a5 100644
+--- a/src/renderer/src/components/tab-bar/tab-width-rules.ts
++++ b/src/renderer/src/components/tab-bar/tab-width-rules.ts
+@@ -1,6 +1,10 @@
+-// Why: tab strips should reveal as much title as space allows, then shrink to
+-// a readable floor before horizontal overflow takes over.
+-export const TAB_CONTAINER_WIDTH_CLASSES =
+-  'min-w-[88px] max-w-[280px] flex-[1_1_180px] min-[1280px]:flex-[1_1_220px]'
++// Why: capped tabs share the strip on a fixed basis; unlimited tabs size from the
++// title (flex-basis auto) so long titles stay fully visible until the strip
++// overflows. Both variants are complete literals so Tailwind JIT can scan them.
++export function getTabContainerWidthClasses(unlimitedWidth: boolean): string {
++  return unlimitedWidth
++    ? 'min-w-[88px] flex-[1_1_auto]'
++    : 'min-w-[88px] max-w-[280px] flex-[1_1_180px] min-[1280px]:flex-[1_1_220px]'
++}
+ 
+ export const TAB_LABEL_WIDTH_CLASSES = 'min-w-0 flex-1 truncate'
+diff --git a/src/renderer/src/hooks/useSettingsNavigationMetadata.test.ts b/src/renderer/src/hooks/useSettingsNavigationMetadata.test.ts
+index 0343bb65bc6c17f979ca03332bceed666becee21..c8824d38de664a3bec4797e83c982b1fb48eee7a 100644
+--- a/src/renderer/src/hooks/useSettingsNavigationMetadata.test.ts
++++ b/src/renderer/src/hooks/useSettingsNavigationMetadata.test.ts
+@@ -143,10 +143,31 @@ describe('settings navigation metadata', () => {
+     const desktopIds = desktopSections.map((section) => section.id)
+ 
+     expect(desktopSections.find((section) => section.id === 'plugins')?.group).toBe('experimental')
+-    expect(desktopIds.indexOf('plugins')).toBe(desktopIds.indexOf('experimental') + 1)
++    expect(desktopIds.indexOf('plugins')).toBe(desktopIds.indexOf('fork-changes') + 1)
+     expect(ids({ isWebClient: true })).not.toContain('plugins')
+   })
+ 
++  it('places Fork Changes immediately after Experimental in the experimental group', () => {
++    const desktopSections = buildSettingsNavigationMetadata({
++      isMac: false,
++      isWindows: false,
++      isWebClient: false,
++      repos: [repo]
++    })
++    const desktopIds = desktopSections.map((section) => section.id)
++    const forkChanges = desktopSections.find((section) => section.id === 'fork-changes')
++
++    expect(forkChanges?.group).toBe('experimental')
++    expect(desktopIds.indexOf('fork-changes')).toBe(desktopIds.indexOf('experimental') + 1)
++    expect(
++      forkChanges?.searchEntries.find((entry) => entry.title === 'Unlimited tab width')
++        ?.targetSectionId
++    ).toBe('fork-changes-unlimited-tab-width')
++
++    const webIds = ids({ isWebClient: true })
++    expect(webIds.indexOf('fork-changes')).toBe(webIds.indexOf('experimental') + 1)
++  })
++
+   it('omits Windows project runtime search entries when the active host is unsupported', () => {
+     const sections = buildSettingsNavigationMetadata({
+       isMac: false,
+diff --git a/src/renderer/src/hooks/useSettingsNavigationMetadata.ts b/src/renderer/src/hooks/useSettingsNavigationMetadata.ts
+index 15fdd70342f5256a350d3782d5127415086f680a..4c226bd56e09a060b0aaed308df8bd7ee003c670 100644
+--- a/src/renderer/src/hooks/useSettingsNavigationMetadata.ts
++++ b/src/renderer/src/hooks/useSettingsNavigationMetadata.ts
+@@ -13,6 +13,7 @@ import {
+   Cable,
+   FlaskConical,
+   GitBranch,
++  GitFork,
+   Globe,
+   Keyboard,
+   ListChecks,
+@@ -72,6 +73,7 @@ import { getAdvancedPaneSearchEntries } from '@/components/settings/advanced-sea
+ import { getShortcutsPaneSearchEntries } from '@/components/settings/shortcuts-search'
+ import { getStatsPaneSearchEntries } from '@/components/stats/stats-search'
+ import { getExperimentalPaneSearchEntries } from '@/components/settings/experimental-search'
++import { getForkChangesPaneSearchEntries } from '@/components/settings/fork-changes-search'
+ import { getPluginsPaneSearchEntries } from '@/components/settings/plugins-search'
+ import { getRepositoryPaneSearchEntries } from '@/components/settings/repository-search'
+ import { buildSettingsProjectList } from '@/components/settings/settings-project-list'
+@@ -571,6 +573,17 @@ export function buildSettingsNavigationMetadata({
+       searchEntries: getExperimentalPaneSearchEntries(),
+       group: 'experimental'
+     },
++    {
++      id: 'fork-changes',
++      title: translate('auto.hooks.useSettingsNavigationMetadata.forkChangesTitle', 'Fork Changes'),
++      description: translate(
++        'auto.hooks.useSettingsNavigationMetadata.forkChangesDescription',
++        'Tweaks specific to this fork of Orca, layered on top of upstream.'
++      ),
++      icon: GitFork,
++      searchEntries: getForkChangesPaneSearchEntries(),
++      group: 'experimental'
++    },
+     ...(showDesktopOnlySettings
+       ? [
+           {
+diff --git a/src/renderer/src/i18n/locales/en.json b/src/renderer/src/i18n/locales/en.json
+index 29218566eb87367c3cc26eb85c810c1ec1fca476..80e75ccda1f82a22f25d67f1325469706b100d48 100644
+--- a/src/renderer/src/i18n/locales/en.json
++++ b/src/renderer/src/i18n/locales/en.json
+@@ -871,7 +871,9 @@
+         "linearDescription": "How Linear works in Orca, setup checklist, agent skill, and example prompts.",
+         "pluginsTitle": "Plugins",
+         "pluginsDescription": "Install and manage experimental Orca plugins.",
+-        "tasksDescription": "Connect providers, install the Linear skill, and choose what appears in Tasks."
++        "tasksDescription": "Connect providers, install the Linear skill, and choose what appears in Tasks.",
++        "forkChangesTitle": "Fork Changes",
++        "forkChangesDescription": "Tweaks specific to this fork of Orca, layered on top of upstream."
+       },
+       "useAppMenuPaste": {
+         "pasteTooLarge": "Paste is too large."
+@@ -7084,7 +7086,9 @@
+           "devDescription": "Dev-only tools for exercising UI states.",
+           "linearTitle": "Linear",
+           "linearDescription": "How Linear works in Orca, setup checklist, agent skill, and example prompts.",
+-          "tasksDescription": "Connect providers, install the Linear skill, and choose what appears in Tasks."
++          "tasksDescription": "Connect providers, install the Linear skill, and choose what appears in Tasks.",
++          "forkChangesTitle": "Fork Changes",
++          "forkChangesDescription": "Tweaks specific to this fork of Orca, layered on top of upstream."
+         },
+         "SettingsFormControls": {
+           "42a4d15a30": "No matching fonts.",
+@@ -10300,6 +10304,19 @@
+           "description": "Input device used for voice dictation. System default follows the OS microphone setting.",
+           "accessHint": "Allow microphone access to list input devices.",
+           "allowAccess": "Allow access"
++        },
++        "ForkChangesPane": {
++          "unlimitedTabWidth": {
++            "title": "Unlimited tab width",
++            "copy": "Remove the maximum width cap on terminal pane tabs so titles get all the space they need.",
++            "toggleLabel": "Toggle unlimited tab width"
++          }
++        },
++        "forkChanges": {
++          "search": {
++            "unlimitedTabWidthTitle": "Unlimited tab width",
++            "unlimitedTabWidthDescription": "Remove the maximum width cap on terminal pane tabs so titles get all the space they need."
++          }
+         }
+       },
+       "right": {
+diff --git a/src/renderer/src/lib/settings-navigation-types.ts b/src/renderer/src/lib/settings-navigation-types.ts
+index 45efa2031e25c82ac85d80f93277b59c25c66e75..c1cb217483ef93e7ac404717a6a0c9cc8e86aec3 100644
+--- a/src/renderer/src/lib/settings-navigation-types.ts
++++ b/src/renderer/src/lib/settings-navigation-types.ts
+@@ -35,6 +35,7 @@ const SETTINGS_NAV_TARGETS = [
+   'stats',
+   'ssh',
+   'experimental',
++  'fork-changes',
+   'plugins',
+   'agents',
+   'orchestration',
+diff --git a/src/shared/constants.test.ts b/src/shared/constants.test.ts
+index e8c55be052d4e74b1846f3c7f8dd86e38176f831..e6922e79a1de5d1e950e4bfd1b68698af4e38771 100644
+--- a/src/shared/constants.test.ts
++++ b/src/shared/constants.test.ts
+@@ -107,6 +107,10 @@ describe('getDefaultSettings', () => {
+     expect(getDefaultSettings('/tmp').experimentalEphemeralVms).toBe(false)
+   })
+ 
++  it('keeps unlimited-width terminal tabs disabled by default', () => {
++    expect(getDefaultSettings('/tmp').experimentalTerminalTabsUnlimitedWidth).toBe(false)
++  })
++
+   it('keeps the agent dashboard popout disabled by default', () => {
+     expect(getDefaultSettings('/tmp').experimentalAgentDashboardPopout).toBe(false)
+     expect(getDefaultSettings('/tmp').experimentalAgentDashboardShowIdle).toBe(false)
+diff --git a/src/shared/constants.ts b/src/shared/constants.ts
+index 80fca73c828fb84152862f22d6af67e1f1fa454f..6e12a248399eb8246fdf64c27339a6d9fa2335bb 100644
+--- a/src/shared/constants.ts
++++ b/src/shared/constants.ts
+@@ -367,6 +367,7 @@ export function getDefaultSettings(homedir: string): GlobalSettings {
+     agentHibernationIdleMs: 30 * 60 * 1000,
+     experimentalNewWorktreeCardStyle: false,
+     experimentalEphemeralVms: false,
++    experimentalTerminalTabsUnlimitedWidth: false,
+     compactWorktreeCards: false,
+     // Why: local desktop stays the default until the user picks a saved runtime environment.
+     activeRuntimeEnvironmentId: null,
+diff --git a/src/shared/types.ts b/src/shared/types.ts
+index 947786da5bc87017ab24b858dac23276b0cddbe8..fdd4c15964580d46962ecc21dc9fd0b5fa56ce6a 100644
+--- a/src/shared/types.ts
++++ b/src/shared/types.ts
+@@ -3084,6 +3084,8 @@ export type GlobalSettings = {
+   experimentalNewWorktreeCardStyle?: boolean
+   /** Experimental: per-workspace on-demand environment recipes and setup surface. */
+   experimentalEphemeralVms?: boolean
++  /** Experimental: removes the max-width cap on terminal-pane tabs so titles get full space. */
++  experimentalTerminalTabsUnlimitedWidth?: boolean
+   /** Compact worktree cards: hide the metadata row when title and branch say the same thing. */
+   compactWorktreeCards: boolean
+   /** Legacy persisted key from the Experimental rollout; new writes use compactWorktreeCards. */
+diff --git a/tests/e2e/tab-width-unlimited-toggle.spec.ts b/tests/e2e/tab-width-unlimited-toggle.spec.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d78674038240089719f7fd0ccf5fd4f89cb25c86
+--- /dev/null
++++ b/tests/e2e/tab-width-unlimited-toggle.spec.ts
+@@ -0,0 +1,112 @@
++/**
++ * E2E for the Fork Changes > "Unlimited tab width" setting
++ * (experimentalTerminalTabsUnlimitedWidth): enabling it live must let a
++ * long-titled terminal tab widen past the default max-w-[280px] cap, and
++ * disabling it must restore the cap without a reload. Store calls are setup
++ * only (long custom title, settings writes); assertions target rendered tab
++ * geometry per tests/e2e/AGENTS.md.
++ */
++
++import { test, expect } from './helpers/orca-app'
++import type { Page } from '@stablyai/playwright-test'
++import {
++  waitForSessionReady,
++  waitForActiveWorktree,
++  getActiveTabId,
++  ensureTerminalVisible
++} from './helpers/store'
++
++const SORTABLE_TAB = '[data-testid="sortable-tab"]'
++// Needs to render wider than the 280px cap so capped vs uncapped is unambiguous.
++const LONG_TITLE = 'a really long terminal tab title that needs far more than the capped width'
++const CAPPED_MAX_PX = 281
++const UNCAPPED_MIN_PX = 320
++
++async function renderedTabWidth(page: Page, tabId: string): Promise<number> {
++  const box = await page.locator(`${SORTABLE_TAB}[data-tab-id="${tabId}"]`).first().boundingBox()
++  if (!box) {
++    throw new Error(`tab ${tabId} has no bounding box`)
++  }
++  return box.width
++}
++
++async function setUnlimitedTabWidth(page: Page, enabled: boolean): Promise<void> {
++  await page.evaluate(async (value) => {
++    await window.__store?.getState().updateSettings({
++      experimentalTerminalTabsUnlimitedWidth: value
++    })
++  }, enabled)
++}
++
++test.describe('Unlimited tab width toggle', () => {
++  test.beforeEach(async ({ orcaPage }) => {
++    await waitForSessionReady(orcaPage)
++    await waitForActiveWorktree(orcaPage)
++    await ensureTerminalVisible(orcaPage)
++  })
++
++  test('toggling the setting uncaps and recaps a long-titled tab live', async ({ orcaPage }) => {
++    const tabId = await getActiveTabId(orcaPage)
++    if (!tabId) {
++      throw new Error('no active tab')
++    }
++
++    await orcaPage.evaluate(
++      ({ id, title }) => window.__store?.getState().setTabCustomTitle(id, title),
++      { id: tabId, title: LONG_TITLE }
++    )
++
++    // Default (capped): the long title cannot push the tab past the cap.
++    await expect
++      .poll(() => renderedTabWidth(orcaPage, tabId), { timeout: 5_000 })
++      .toBeLessThanOrEqual(CAPPED_MAX_PX)
++
++    await setUnlimitedTabWidth(orcaPage, true)
++    await expect
++      .poll(() => renderedTabWidth(orcaPage, tabId), { timeout: 5_000 })
++      .toBeGreaterThan(UNCAPPED_MIN_PX)
++
++    await setUnlimitedTabWidth(orcaPage, false)
++    await expect
++      .poll(() => renderedTabWidth(orcaPage, tabId), { timeout: 5_000 })
++      .toBeLessThanOrEqual(CAPPED_MAX_PX)
++  })
++
++  test('the Fork Changes row is searchable and its switch flips the setting', async ({
++    orcaPage
++  }, testInfo) => {
++    await orcaPage.evaluate(async () => {
++      const store = window.__store
++      if (!store) {
++        throw new Error('window.__store is not available')
++      }
++      // Why: assertions below are on English strings; 'system' would follow the host locale.
++      await store.getState().updateSettings({ uiLanguage: 'en' })
++      store.getState().openSettingsPage()
++    })
++
++    const searchInput = orcaPage.getByPlaceholder('Search settings')
++    await expect(searchInput).toBeVisible()
++    await searchInput.fill('unlimited tab width')
++
++    await orcaPage.getByText('Fork Changes', { exact: true }).first().click()
++
++    const row = orcaPage.locator('#fork-changes-unlimited-tab-width')
++    await expect(row.getByText('Unlimited tab width', { exact: true }).first()).toBeVisible()
++
++    const switchButton = row.locator('button[role="switch"]')
++    await expect(switchButton).toHaveAttribute('aria-checked', 'false')
++    await switchButton.click()
++    await expect(switchButton).toHaveAttribute('aria-checked', 'true')
++
++    const persisted = await orcaPage.evaluate(
++      () => window.__store?.getState().settings?.experimentalTerminalTabsUnlimitedWidth
++    )
++    expect(persisted).toBe(true)
++
++    await testInfo.attach('fork-changes-section', {
++      body: await orcaPage.screenshot(),
++      contentType: 'image/png'
++    })
++  })
++})
