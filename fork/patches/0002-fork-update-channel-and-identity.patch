@@ -883,7 +883,7 @@ index c17dfef4c24c9a6bed98ddd4786d2611bc5827b8..456eaecf249ddff731de7c5f1750c390
      }
      if (init?.method === 'HEAD' && assetStatus !== undefined) {
 diff --git a/src/main/updater.test.ts b/src/main/updater.test.ts
-index dce8b39a7b6d70f2f44f43e5682f553225fc3ad6..4cb03d4fbfa9844aeb271f633ad5a34de1602f37 100644
+index dce8b39a7b6d70f2f44f43e5682f553225fc3ad6..535af66809a76b7ef991458cfe6526897c932ae5 100644
 --- a/src/main/updater.test.ts
 +++ b/src/main/updater.test.ts
 @@ -238,7 +238,7 @@ vi.mock('./updater-prerelease-feed', () => ({
@@ -895,6 +895,17 @@ index dce8b39a7b6d70f2f44f43e5682f553225fc3ad6..4cb03d4fbfa9844aeb271f633ad5a34d
  }))
  
  vi.mock('./local-builds/local-build-switch', () => ({
+@@ -249,8 +249,8 @@ vi.mock('./local-builds/local-build-feed-server', () => ({
+   startLocalBuildFeed: startLocalBuildFeedMock
+ }))
+ 
+-/** Mirrors AUTO_UPDATE_CHECK_INTERVAL_MS in updater.ts. */
+-const AUTO_UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000
++/** Mirrors AUTO_UPDATE_CHECK_INTERVAL_MS in updater.ts (fork: 30 min, not daily). */
++const AUTO_UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000
+ 
+ describe('updater', () => {
+   beforeEach(() => {
 @@ -417,7 +417,7 @@ describe('updater', () => {
        expect(autoUpdaterMock.disableDifferentialDownload).toBe(false)
        expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
@@ -1128,10 +1139,21 @@ index dce8b39a7b6d70f2f44f43e5682f553225fc3ad6..4cb03d4fbfa9844aeb271f633ad5a34d
    })
  
 diff --git a/src/main/updater.ts b/src/main/updater.ts
-index 96bf163e54e9bbd4ea71e6de8d59b6dd852b2596..a4760c7ac591fd329b563fa5f4f0daea8165c3b6 100644
+index 96bf163e54e9bbd4ea71e6de8d59b6dd852b2596..7b8f123d599ecd83c8a95fce89d3faa3e655647c 100644
 --- a/src/main/updater.ts
 +++ b/src/main/updater.ts
-@@ -1437,7 +1437,7 @@ async function pinDefaultReleaseFeed(
+@@ -103,7 +103,9 @@ export type UpdateInstallMode =
+   | 'supervised-headless-serve'
+   | 'unsupported-headless-serve'
+ 
+-const AUTO_UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000
++// Fork: 30 minutes, not daily — fork rebuilds land ~20-40 min after a push, and
++// the whole point of the self-improvement loop is a timely update prompt.
++const AUTO_UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000
+ const AUTO_UPDATE_RETRY_INTERVAL_MS = 60 * 60 * 1000
+ // Why: a persistently-failing feed used to re-arm the retry at a fixed 1h cadence forever (issue #7576); backoff doubles per failure up to this cap, any completed check resets.
+ const MAX_AUTO_UPDATE_RETRY_INTERVAL_MS = 6 * 60 * 60 * 1000
+@@ -1437,7 +1439,7 @@ async function pinDefaultReleaseFeed(
    } else {
      clearPrereleaseFallbackContext()
      clearPublishingWindowLastGoodCheck()
@@ -1140,7 +1162,7 @@ index 96bf163e54e9bbd4ea71e6de8d59b6dd852b2596..a4760c7ac591fd329b563fa5f4f0daea
      console.info(
        `[updater] release feed fallback: current=${currentVersion} includePrerelease=${includePrerelease} → ${url}`
      )
-@@ -2202,7 +2202,7 @@ export function setupAutoUpdater(
+@@ -2202,7 +2204,7 @@ export function setupAutoUpdater(
    if (activeUpdateSource === 'release') {
      autoUpdater.setFeedURL({
        provider: 'generic',
