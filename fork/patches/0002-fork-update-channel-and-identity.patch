@@ -116,38 +116,10 @@ index e8150e32b6f1c741faf1f671b5435b8614e602d2..eaf031f22a7726a2af3b4b26fbf7b3de
  // Why: dev launches only need the host architecture; release builds ship a
  // universal binary matching the app's x64 + arm64 targets.
 diff --git a/config/scripts/electron-builder-config.test.mjs b/config/scripts/electron-builder-config.test.mjs
-index 3227d957b24ff054f17e25d7b8fa36679eaa9c68..047cbe8f7582d7b7a55b7b9058ded9523ce711cc 100644
+index 3227d957b24ff054f17e25d7b8fa36679eaa9c68..190cd45f35305cd691f3458bde29ea175b7b2297 100644
 --- a/config/scripts/electron-builder-config.test.mjs
 +++ b/config/scripts/electron-builder-config.test.mjs
-@@ -1,4 +1,5 @@
- import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
-+import { readFileSync } from 'node:fs'
- import { createRequire } from 'node:module'
- import { tmpdir } from 'node:os'
- import { join } from 'node:path'
-@@ -62,6 +63,21 @@ describe('electron-builder config', () => {
-     )
-   })
- 
-+  it('pins a space-free mac zip artifact name so manifests, uploads, and probes agree', () => {
-+    // Why: productName contains a space; the default zip name would diverge between
-+    // latest-mac.yml (safe name, dashes) and the GitHub asset (dots) -> permanent 404s.
-+    expect(electronBuilderConfig.mac.artifactName).toBe('orca-macos-${version}-${arch}-mac.${ext}')
-+  })
-+
-+  it('never pins a mac executableName, which would rename the bundle onto Orca.app', () => {
-+    // Why: mac executableName renames the .app itself, colliding with an official
-+    // Orca install; the CLI shim instead resolves CFBundleExecutable at runtime.
-+    expect(electronBuilderConfig.mac.executableName).toBeUndefined()
-+    const shim = readFileSync(join(import.meta.dirname, '..', '..', 'resources', 'darwin', 'bin', 'orca'), 'utf8')
-+    expect(shim).toContain('CFBundleExecutable')
-+    expect(shim).not.toContain('ELECTRON="$CONTENTS/MacOS/Orca"')
-+  })
-+
-   it('excludes repo-only source trees from app.asar', () => {
-     expect(electronBuilderConfig.files).toEqual(
-       expect.arrayContaining([
-@@ -305,12 +321,12 @@ describe('electron-builder config', () => {
+@@ -305,12 +305,12 @@ describe('electron-builder config', () => {
  
    // Why: Squirrel.Mac swaps the .app in place only when the replacement carries the
    // same bundle id and a valid Developer ID signature. A hourly built on the local
@@ -162,7 +134,7 @@ index 3227d957b24ff054f17e25d7b8fa36679eaa9c68..047cbe8f7582d7b7a55b7b9058ded952
        expect(config.mac.hardenedRuntime).toBe(true)
        expect(config.forceCodeSigning).toBe(true)
      })
-@@ -338,7 +354,7 @@ describe('electron-builder config', () => {
+@@ -338,7 +338,7 @@ describe('electron-builder config', () => {
        expect(config.publish).toMatchObject({ repo: 'orca-hourly', releaseType: 'prerelease' })
      })
      expect(electronBuilderConfig.publish).toMatchObject({
@@ -171,7 +143,7 @@ index 3227d957b24ff054f17e25d7b8fa36679eaa9c68..047cbe8f7582d7b7a55b7b9058ded952
        releaseType: 'release'
      })
    })
-@@ -357,7 +373,7 @@ describe('electron-builder config', () => {
+@@ -357,7 +357,7 @@ describe('electron-builder config', () => {
    // argument apply. Only the destination repo differs.
    it('builds adhoc artifacts with the release identity and its own repo', () => {
      withAdhocEnv((config) => {
@@ -180,6 +152,41 @@ index 3227d957b24ff054f17e25d7b8fa36679eaa9c68..047cbe8f7582d7b7a55b7b9058ded952
        expect(config.mac.hardenedRuntime).toBe(true)
        expect(config.mac.notarize).toBe(true)
        expect(config.forceCodeSigning).toBe(true)
+diff --git a/config/scripts/electron-builder-fork-identity.test.mjs b/config/scripts/electron-builder-fork-identity.test.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..9605aff7538c6cac5f8c07b602ca34486badf380
+--- /dev/null
++++ b/config/scripts/electron-builder-fork-identity.test.mjs
+@@ -0,0 +1,29 @@
++// Fork-identity packaging assertions: 'Orca Configured' branding must never
++// regress the updater asset naming or the bundle/executable layout.
++import { readFileSync } from 'node:fs'
++import { join } from 'node:path'
++import { createRequire } from 'node:module'
++import { describe, expect, it } from 'vitest'
++
++const require = createRequire(import.meta.url)
++const electronBuilderConfig = require('../electron-builder.config.cjs')
++
++describe('electron-builder fork identity', () => {
++  it('pins a space-free mac zip artifact name so manifests, uploads, and probes agree', () => {
++    // Why: productName contains a space; the default zip name would diverge between
++    // latest-mac.yml (safe name, dashes) and the GitHub asset (dots) -> permanent 404s.
++    expect(electronBuilderConfig.mac.artifactName).toBe('orca-macos-${version}-${arch}-mac.${ext}')
++  })
++
++  it('never pins a mac executableName, which would rename the bundle onto Orca.app', () => {
++    // Why: mac executableName renames the .app itself, colliding with an official
++    // Orca install; the CLI shim instead resolves CFBundleExecutable at runtime.
++    expect(electronBuilderConfig.mac.executableName).toBeUndefined()
++    const shim = readFileSync(
++      join(import.meta.dirname, '..', '..', 'resources', 'darwin', 'bin', 'orca'),
++      'utf8'
++    )
++    expect(shim).toContain('CFBundleExecutable')
++    expect(shim).not.toContain('ELECTRON="$CONTENTS/MacOS/Orca"')
++  })
++})
 diff --git a/config/scripts/mac-build-compatibility.test.mjs b/config/scripts/mac-build-compatibility.test.mjs
 index 81b642c503d390895b632b45f36ad6a0f560e94d..929427a1ee4cd5c67c01b27e754981c9f1353eac 100644
 --- a/config/scripts/mac-build-compatibility.test.mjs
