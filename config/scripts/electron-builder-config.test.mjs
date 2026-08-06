@@ -62,6 +62,12 @@ describe('electron-builder config', () => {
     )
   })
 
+  it('pins a space-free mac zip artifact name so manifests, uploads, and probes agree', () => {
+    // Why: productName contains a space; the default zip name would diverge between
+    // latest-mac.yml (safe name, dashes) and the GitHub asset (dots) -> permanent 404s.
+    expect(electronBuilderConfig.mac.artifactName).toBe('orca-macos-${version}-${arch}-mac.${ext}')
+  })
+
   it('excludes repo-only source trees from app.asar', () => {
     expect(electronBuilderConfig.files).toEqual(
       expect.arrayContaining([
@@ -305,12 +311,12 @@ describe('electron-builder config', () => {
 
   // Why: Squirrel.Mac swaps the .app in place only when the replacement carries the
   // same bundle id and a valid Developer ID signature. A hourly built on the local
-  // (com.stablyai.orca.local, ad-hoc) identity would be un-installable over a real
+  // (art.arcane.orca.configured.local, ad-hoc) identity would be un-installable over a real
   // Orca — the whole point of the channel.
   it('builds hourly artifacts with the release signing identity', () => {
     withHourlyEnv((config) => {
       expect(config.mac.appId).toBeUndefined()
-      expect(config.appId).toBe('com.stablyai.orca')
+      expect(config.appId).toBe('art.arcane.orca.configured')
       expect(config.mac.hardenedRuntime).toBe(true)
       expect(config.forceCodeSigning).toBe(true)
     })
@@ -338,7 +344,7 @@ describe('electron-builder config', () => {
       expect(config.publish).toMatchObject({ repo: 'orca-hourly', releaseType: 'prerelease' })
     })
     expect(electronBuilderConfig.publish).toMatchObject({
-      repo: 'orca',
+      repo: 'orca-configured',
       releaseType: 'release'
     })
   })
@@ -357,7 +363,7 @@ describe('electron-builder config', () => {
   // argument apply. Only the destination repo differs.
   it('builds adhoc artifacts with the release identity and its own repo', () => {
     withAdhocEnv((config) => {
-      expect(config.appId).toBe('com.stablyai.orca')
+      expect(config.appId).toBe('art.arcane.orca.configured')
       expect(config.mac.hardenedRuntime).toBe(true)
       expect(config.mac.notarize).toBe(true)
       expect(config.forceCodeSigning).toBe(true)

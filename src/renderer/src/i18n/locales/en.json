@@ -8251,6 +8251,10 @@
             "agentDashboard": {
               "title": "Agent Dashboard",
               "description": "Kanban board for monitoring agents across worktrees, in-window or as a pop-out."
+            },
+            "toggles": {
+              "unlimitedTabWidthTitle": "Unlimited tab width",
+              "unlimitedTabWidthDescription": "Remove the maximum width cap on terminal pane tabs so titles get all the space they need."
             }
           }
         },
@@ -10300,6 +10304,15 @@
           "description": "Input device used for voice dictation. System default follows the OS microphone setting.",
           "accessHint": "Allow microphone access to list input devices.",
           "allowAccess": "Allow access"
+        },
+        "TogglesExperimentalGroup": {
+          "title": "Toggles",
+          "description": "Small behavior tweaks for this fork of Orca.",
+          "unlimitedTabWidth": {
+            "title": "Unlimited tab width",
+            "copy": "Remove the maximum width cap on terminal pane tabs so titles get all the space they need.",
+            "toggleLabel": "Toggle unlimited tab width"
+          }
         }
       },
       "right": {

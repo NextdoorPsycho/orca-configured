@@ -36,8 +36,8 @@ describe('release channel', () => {
     // Why adhoc gets a third repo rather than sharing hourly's: an unlanded
     // branch build must never surface to someone who only meant to ride main.
     expect(getReleaseRepoForChannel('adhoc')).toBe('stablyai/orca-adhoc')
-    expect(getReleaseRepoForChannel('stable')).toBe('stablyai/orca')
-    expect(getReleaseRepoForChannel('rc')).toBe('stablyai/orca')
+    expect(getReleaseRepoForChannel('stable')).toBe('NextdoorPsycho/orca-configured')
+    expect(getReleaseRepoForChannel('rc')).toBe('NextdoorPsycho/orca-configured')
   })
 
   it('marks exactly the dev channels as having their own repo', () => {
@@ -54,15 +54,17 @@ describe('release channel', () => {
       'https://github.com/stablyai/orca-hourly/releases/tag/v1.4.160-hourly.202607281400'
     )
     expect(getReleaseNotesUrlForVersion('1.4.160')).toBe(
-      'https://github.com/stablyai/orca/releases/tag/v1.4.160'
+      'https://github.com/NextdoorPsycho/orca-configured/releases/tag/v1.4.160'
     )
     expect(getReleaseNotesUrlForVersion('v1.4.160-rc.3')).toBe(
-      'https://github.com/stablyai/orca/releases/tag/v1.4.160-rc.3'
+      'https://github.com/NextdoorPsycho/orca-configured/releases/tag/v1.4.160-rc.3'
     )
     expect(getReleaseNotesUrlForVersion('1.4.160-adhoc.20260728140533')).toBe(
       'https://github.com/stablyai/orca-adhoc/releases/tag/v1.4.160-adhoc.20260728140533'
     )
-    expect(getReleaseNotesUrlForVersion(null)).toBe('https://github.com/stablyai/orca/releases')
+    expect(getReleaseNotesUrlForVersion(null)).toBe(
+      'https://github.com/NextdoorPsycho/orca-configured/releases'
+    )
   })
 
   it('round-trips an hourly version stamp as UTC', () => {
@@ -132,12 +134,12 @@ describe('release channel', () => {
     expect(parseDevBuildStamp('1.4.160')).toBeNull()
   })
 
-  // Why: both dev workflows are macOS-only, so the channels have no artifact to
-  // offer elsewhere. Both the picker and the main-process check read this, so a
-  // regression here would silently re-expose an uninstallable channel.
-  it('offers the dev channels only on macOS', () => {
+  // Why: the fork ships no dev channels — upstream's hourly/adhoc repos carry
+  // com.stablyai.orca builds Squirrel.Mac cannot swap onto this fork's bundle
+  // identity, so exposing them would strand the updater mid-swap.
+  it('offers the dev channels nowhere on the fork', () => {
     for (const channel of ['hourly', 'adhoc'] as const) {
-      expect(isChannelSupportedOnPlatform(channel, 'darwin')).toBe(true)
+      expect(isChannelSupportedOnPlatform(channel, 'darwin')).toBe(false)
       expect(isChannelSupportedOnPlatform(channel, 'linux')).toBe(false)
       expect(isChannelSupportedOnPlatform(channel, 'win32')).toBe(false)
     }

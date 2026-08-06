@@ -3084,6 +3084,8 @@ export type GlobalSettings = {
   experimentalNewWorktreeCardStyle?: boolean
   /** Experimental: per-workspace on-demand environment recipes and setup surface. */
   experimentalEphemeralVms?: boolean
+  /** Experimental: removes the max-width cap on terminal-pane tabs so titles get full space. */
+  experimentalTerminalTabsUnlimitedWidth?: boolean
   /** Compact worktree cards: hide the metadata row when title and branch say the same thing. */
   compactWorktreeCards: boolean
   /** Legacy persisted key from the Experimental rollout; new writes use compactWorktreeCards. */

@@ -10,6 +10,7 @@ import { translate } from '@/i18n/i18n'
 import { NativeChatExperimentalSetting } from './NativeChatExperimentalSetting'
 import { AgentDashboardExperimentalSetting } from './AgentDashboardExperimentalSetting'
 import { EphemeralVmsExperimentalSetting } from './EphemeralVmsExperimentalSetting'
+import { TogglesExperimentalGroup } from './TogglesExperimentalGroup'
 import {
   MAX_AGENT_HIBERNATION_IDLE_MS,
   MIN_AGENT_HIBERNATION_IDLE_MS,
@@ -328,6 +329,8 @@ export function ExperimentalPane({
       ) : null}
 
       <EphemeralVmsExperimentalSetting settings={settings} updateSettings={updateSettings} />
+
+      <TogglesExperimentalGroup settings={settings} updateSettings={updateSettings} />
 
       {hiddenExperimentalUnlocked ? <HiddenExperimentalGroup /> : null}
     </div>

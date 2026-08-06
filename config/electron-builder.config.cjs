@@ -35,7 +35,7 @@ const devChannelBuildVersion = isMacHourly
 // to install. Keeping adhoc separate from hourly too means a branch build cannot
 // be picked up by someone who only meant to ride main.
 const devChannelRepo = isMacHourly ? 'orca-hourly' : isMacAdhoc ? 'orca-adhoc' : null
-const appId = 'com.stablyai.orca'
+const appId = 'art.arcane.orca.configured'
 const featureWallResources = {
   from: 'resources/onboarding/feature-wall',
   to: 'onboarding/feature-wall'
@@ -80,7 +80,7 @@ const winSpeechNativeResource = {
 /** @type {import('electron-builder').Configuration} */
 module.exports = {
   appId,
-  productName: 'Orca',
+  productName: 'Orca Configured',
   ...(devChannelBuildVersion
     ? { extraMetadata: { version: devChannelBuildVersion } }
     : localBuildVersion
@@ -273,11 +273,8 @@ module.exports = {
   },
   win: {
     executableName: 'Orca',
-    // Why: Windows installers are signed after electron-builder packaging by
-    // SignPath, so the packager cannot infer the updater publisherName.
-    signtoolOptions: {
-      publisherName: 'SignPath Foundation'
-    },
+    // Why: fork builds are unsigned; without a publisherName pin electron-updater
+    // skips the Authenticode publisher check instead of rejecting every installer.
     extraResources: [
       ...commonExtraResources,
       ...createPackagedRuntimeNodeModuleResources('win32'),
@@ -391,7 +388,11 @@ module.exports = {
         target: 'zip',
         arch: ['x64', 'arm64']
       }
-    ]
+    ],
+    // Why: productName has a space; the default zip name would diverge between
+    // latest-mac.yml's safe name (dashes) and GitHub's renamed asset (dots),
+    // 404ing every mac updater download. Keep this space-free.
+    artifactName: 'orca-macos-${version}-${arch}-mac.${ext}'
   },
   // Why: release builds should fail if signing is unavailable instead of
   // silently downgrading to ad-hoc artifacts that look shippable in CI logs.
@@ -432,7 +433,7 @@ module.exports = {
       featureWallResources
     ],
     target: ['AppImage', 'deb'],
-    maintainer: 'stablyai',
+    maintainer: 'Arcane Arts Inc.',
     category: 'Utility'
   },
   appImage: {
@@ -487,8 +488,8 @@ module.exports = {
   npmRebuild: true,
   publish: {
     provider: 'github',
-    owner: 'stablyai',
-    repo: devChannelRepo ?? 'orca',
+    owner: 'NextdoorPsycho',
+    repo: devChannelRepo ?? 'orca-configured',
     releaseType: devChannelRepo ? 'prerelease' : 'release'
   }
 }

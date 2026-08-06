@@ -1,0 +1,56 @@
+[
+  {
+    "file": "0001-experimental-toggles-unlimited-tab-width.patch",
+    "title": "Experimental Toggles section + unlimited tab width toggle",
+    "paths": [
+      "src/shared/types.ts",
+      "src/shared/constants.ts",
+      "src/shared/constants.test.ts",
+      "src/renderer/src/components/tab-bar/",
+      "src/renderer/src/components/settings/",
+      "src/renderer/src/i18n/locales/en.json",
+      "tests/e2e/tab-width-unlimited-toggle.spec.ts"
+    ]
+  },
+  {
+    "file": "0002-fork-update-channel-and-identity.patch",
+    "title": "Update feed + app identity repoint to NextdoorPsycho/orca-configured",
+    "required": true,
+    "paths": [
+      "src/main/updater-prerelease-feed.ts",
+      "src/main/updater.ts",
+      "src/shared/release-channel.ts",
+      "config/electron-builder.config.cjs",
+      "config/dev-app-update.yml",
+      "package.json",
+      "config/scripts/build-computer-macos.mjs",
+      "config/scripts/build-notification-status-macos.mjs",
+      "config/scripts/electron-builder-config.test.mjs",
+      "config/scripts/mac-build-compatibility.test.mjs",
+      "config/scripts/verify-release-required-assets.mjs",
+      "config/scripts/verify-release-required-assets.test.mjs",
+      "src/renderer/src/components/UpdateCard.error-card.test.tsx",
+      "config/scripts/macos-launch-diagnostics.sh",
+      "config/scripts/run-electron-vite-dev.mjs",
+      "native/computer-use-macos/Sources/OrcaComputerUseMacOS/main.swift",
+      "native/computer-use-macos/Sources/OrcaComputerUseMacOSCore/AuthenticatedConnectionHangupMonitor.swift",
+      "src/main/computer/macos-computer-use-permissions.ts",
+      "src/main/ipc/notifications.ts",
+      "src/main/local-builds/local-build-candidate.test.ts",
+      "src/main/local-builds/local-build-compatibility-contract.test.ts",
+      "src/main/macos-tcc-prompt-watch.ts",
+      "src/main/macos-tcc-prompt-watch.test.ts",
+      "src/main/startup/dev-instance-identity.ts",
+      "src/main/startup/dev-instance-identity.test.ts",
+      "src/main/updater-prerelease-feed-readiness.test.ts",
+      "src/main/updater-prerelease-feed.test.ts",
+      "src/main/updater-release-builds.test.ts",
+      "src/main/updater.check-failure.test.ts",
+      "src/main/updater.test.ts",
+      "src/shared/local-build-compatibility-contract.json",
+      "src/shared/local-build-compatibility-contract.ts",
+      "src/shared/local-build-compatibility.test.ts",
+      "src/shared/release-channel.test.ts"
+    ]
+  }
+]

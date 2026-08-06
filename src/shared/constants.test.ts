@@ -107,6 +107,10 @@ describe('getDefaultSettings', () => {
     expect(getDefaultSettings('/tmp').experimentalEphemeralVms).toBe(false)
   })
 
+  it('keeps unlimited-width terminal tabs disabled by default', () => {
+    expect(getDefaultSettings('/tmp').experimentalTerminalTabsUnlimitedWidth).toBe(false)
+  })
+
   it('keeps the agent dashboard popout disabled by default', () => {
     expect(getDefaultSettings('/tmp').experimentalAgentDashboardPopout).toBe(false)
     expect(getDefaultSettings('/tmp').experimentalAgentDashboardShowIdle).toBe(false)

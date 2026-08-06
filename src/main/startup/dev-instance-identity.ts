@@ -2,8 +2,11 @@ import { createHash } from 'node:crypto'
 import path from 'node:path'
 import type { AppIdentity } from '../../shared/app-identity'
 
-const BASE_APP_NAME = 'Orca'
-const BASE_APP_USER_MODEL_ID = 'com.stablyai.orca'
+// Fork: distinct from official Orca — this name drives Electron's default
+// userData path and the single-instance lock, so 'Orca' would collide with an
+// official install on case-insensitive filesystems and refuse to launch.
+const BASE_APP_NAME = 'Orca Configured'
+const BASE_APP_USER_MODEL_ID = 'art.arcane.orca.configured'
 const MAX_LABEL_LENGTH = 80
 
 export type DevInstanceIdentity = AppIdentity & {

@@ -16,7 +16,7 @@ export const RELEASE_CHANNEL_LABELS: Readonly<Record<ReleaseChannel, string>> = 
  *  tags a day would evict every stable/RC entry and strand real users. */
 export const HOURLY_RELEASE_REPO = 'stablyai/orca-hourly'
 export const ADHOC_RELEASE_REPO = 'stablyai/orca-adhoc'
-export const MAIN_RELEASE_REPO = 'stablyai/orca'
+export const MAIN_RELEASE_REPO = 'NextdoorPsycho/orca-configured'
 
 export const HOURLY_PRERELEASE_IDENTIFIER = 'hourly'
 export const ADHOC_PRERELEASE_IDENTIFIER = 'adhoc'
@@ -47,17 +47,15 @@ export function hasDedicatedReleaseRepo(channel: ReleaseChannel): channel is Ded
  * Shared so the picker, the main-process check, and any future surface cannot
  * drift on where a channel is available.
  *
- * Why this rides on the dev-channel list: both dev channels are produced only by
- * macOS workflows, so neither has an artifact to offer elsewhere. If one ever
- * gains a Windows or Linux job, split the two concepts apart — they coincide
- * today, but "published to its own repo" and "built for macOS only" are not the
- * same claim.
+ * Fork: dev channels are disabled everywhere — hourly/adhoc repos stay upstream
+ * and serve com.stablyai.orca builds that Squirrel.Mac cannot swap onto this
+ * fork's bundle identity, so offering them would strand the updater mid-swap.
  */
 export function isChannelSupportedOnPlatform(
   channel: ReleaseChannel,
-  platform: NodeJS.Platform
+  _platform: NodeJS.Platform
 ): boolean {
-  return !hasDedicatedReleaseRepo(channel) || platform === 'darwin'
+  return !hasDedicatedReleaseRepo(channel)
 }
 
 export function getReleaseRepoForChannel(channel: ReleaseChannel): string {

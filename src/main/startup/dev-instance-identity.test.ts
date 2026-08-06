@@ -3,13 +3,16 @@ import { getDevInstanceIdentity } from './dev-instance-identity'
 
 describe('dev-instance-identity', () => {
   it('keeps packaged identity stable', () => {
+    // Fork: 'Orca Configured' (not 'Orca') — app name drives Electron's default
+    // userData path and single-instance lock, which must not collide with an
+    // official Orca install on case-insensitive filesystems.
     expect(getDevInstanceIdentity(false, {})).toMatchObject({
-      name: 'Orca',
-      appName: 'Orca',
+      name: 'Orca Configured',
+      appName: 'Orca Configured',
       isDev: false,
       devLabel: null,
       dockBadgeLabel: null,
-      appUserModelId: 'com.stablyai.orca'
+      appUserModelId: 'art.arcane.orca.configured'
     })
   })
 
@@ -20,9 +23,9 @@ describe('dev-instance-identity', () => {
     // Per-branch label differs (window title / app menu)...
     expect(a.name).not.toBe(b.name)
     // ...but the Keychain-driving appName is identical and distinct from prod.
-    expect(a.appName).toBe('Orca Dev')
-    expect(b.appName).toBe('Orca Dev')
-    expect(a.appName).not.toBe('Orca')
+    expect(a.appName).toBe('Orca Configured Dev')
+    expect(b.appName).toBe('Orca Configured Dev')
+    expect(a.appName).not.toBe('Orca Configured')
   })
 
   it('derives a readable dev label from worktree and branch env', () => {
@@ -39,9 +42,9 @@ describe('dev-instance-identity', () => {
       devWorktreeName: 'dev-indicator',
       devRepoRoot: '/repo/worktrees/dev-indicator'
     })
-    expect(identity.name).toBe('Orca: nwparker/dev-indicator')
+    expect(identity.name).toBe('Orca Configured: nwparker/dev-indicator')
     expect(identity.dockBadgeLabel).toBeNull()
-    expect(identity.appUserModelId).toMatch(/^com\.stablyai\.orca\.dev\.[a-f0-9]{10}$/)
+    expect(identity.appUserModelId).toMatch(/^art\.arcane\.orca\.configured\.dev\.[a-f0-9]{10}$/)
   })
 
   it('includes the branch when it differs from the worktree basename', () => {
@@ -52,7 +55,7 @@ describe('dev-instance-identity', () => {
     })
 
     expect(identity.devLabel).toBe('payment-ui @ feature/billing-shell')
-    expect(identity.name).toBe('Orca: feature/billing-shell')
+    expect(identity.name).toBe('Orca Configured: feature/billing-shell')
     expect(identity.dockBadgeLabel).toBeNull()
   })
 
@@ -64,7 +67,7 @@ describe('dev-instance-identity', () => {
     })
 
     expect(identity.devLabel).toBe('manual label')
-    expect(identity.name).toBe('Orca: feature/other')
+    expect(identity.name).toBe('Orca Configured: feature/other')
     expect(identity.dockBadgeLabel).toBeNull()
   })
 })

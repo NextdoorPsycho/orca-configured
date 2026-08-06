@@ -28,7 +28,7 @@ import {
 import { canOpenMarkdownPreview } from '@/components/editor/markdown-preview-controls'
 import { EditorFileTabContextMenu } from './EditorFileTabContextMenu'
 import { translate } from '@/i18n/i18n'
-import { TAB_CONTAINER_WIDTH_CLASSES, TAB_LABEL_WIDTH_CLASSES } from './tab-width-rules'
+import { getTabContainerWidthClasses, TAB_LABEL_WIDTH_CLASSES } from './tab-width-rules'
 import { EditorFileTabCloseButton } from './EditorFileTabCloseButton'
 import { useTabStripPointerActivation } from './tab-strip-pointer-activation'
 
@@ -105,6 +105,9 @@ export default function EditorFileTab({
     diffSource: file.diffSource
   })
   const openMarkdownPreview = useAppStore((s) => s.openMarkdownPreview)
+  const unlimitedTabWidth = useAppStore(
+    (s) => s.settings?.experimentalTerminalTabsUnlimitedWidth === true
+  )
   const [menuOpen, setMenuOpen] = useState(false)
   const [menuPoint, setMenuPoint] = useState({ x: 0, y: 0 })
   const [isRenaming, setIsRenaming] = useState(false)
@@ -379,7 +382,7 @@ export default function EditorFileTab({
   return (
     <>
       <div
-        className={TAB_CONTAINER_WIDTH_CLASSES}
+        className={getTabContainerWidthClasses(unlimitedTabWidth)}
         onContextMenuCapture={(event) => {
           event.preventDefault()
           window.dispatchEvent(new Event(CLOSE_ALL_CONTEXT_MENUS_EVENT))

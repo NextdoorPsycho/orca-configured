@@ -1,0 +1,585 @@
+name: Fork Release
+
+# Builds NextdoorPsycho/orca-configured releases by checking out the newest
+# upstream (stablyai/orca) release tag, applying fork/patches/ on top, and
+# publishing the artifacts to THIS repo under the SAME tag name so
+# electron-updater manifests keep working unchanged.
+#
+# Rebuild semantics (kept simple and deterministic):
+#   - schedule / dispatch without force: skip (early success) when this repo
+#     already has a NON-DRAFT release for the target tag.
+#   - dispatch with force=true, or ANY push touching fork/** or this file
+#     (the push path filter already means the patch set may have changed):
+#     rebuild the SAME tag — no suffixes, no parallel tags.
+#   - whenever we proceed, any pre-existing release for the tag (draft or
+#     published) is deleted along with its tag and recreated as a fresh
+#     draft, so a leftover draft from a failed run can never accumulate
+#     stale assets. The publish job flips the draft public at the end.
+#
+# Optional patch failures do NOT block the release: apply-patches.mjs exits 2,
+# the build ships whatever applied, and the publish job files/updates a
+# "Patch failure on <tag>" issue (owner requirement: notify but ship the rest).
+# Patches marked "required" in fork/patches.json (the feed/identity repoint)
+# make apply-patches exit 1 instead — shipping without them would silently
+# migrate installs back to upstream's update feed, so the leg hard-fails.
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+    inputs:
+      upstream_tag:
+        description: Upstream release tag to build (default = newest non-draft, prereleases included)
+        required: false
+        type: string
+        default: ''
+      force:
+        description: Rebuild even if this repo already published this tag
+        required: false
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - 'fork/**'
+      - '.github/workflows/fork-release.yml'
+
+permissions:
+  contents: write
+  issues: write
+  # Why: the publish job pulls the per-platform apply reports back down with
+  # `gh run download`, which needs read access to this run's artifacts.
+  actions: read
+
+concurrency:
+  group: fork-release
+  cancel-in-progress: false
+
+jobs:
+  # Push-only guard: fail the workflow (not the release) when fork/patches/ is
+  # stale relative to main's tree. Build/publish do not depend on this job.
+  patch-drift:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # Full history so the recorded upstream base is an ancestor of HEAD.
+          fetch-depth: 0
+
+      - name: Verify committed patches match main's tree
+        run: node fork/export-patches.mjs --check
+
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.pick.outputs.tag }}
+      proceed: ${{ steps.pick.outputs.proceed }}
+      upstream_url: ${{ steps.pick.outputs.upstream_url }}
+    steps:
+      - name: Pick upstream tag, dedupe, and open a fresh draft
+        id: pick
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Empty on schedule/push triggers; only workflow_dispatch fills these.
+          UPSTREAM_TAG: ${{ inputs.upstream_tag }}
+          FORCE: ${{ inputs.force }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+
+          tag="${UPSTREAM_TAG:-}"
+          if [ -z "$tag" ]; then
+            # Newest non-draft upstream release, prereleases included (the API
+            # lists releases newest-first).
+            tag="$(gh api 'repos/stablyai/orca/releases?per_page=30' --jq '[.[] | select(.draft | not)][0].tag_name // empty')"
+          fi
+          if [ -z "$tag" ]; then
+            echo "::error::Could not resolve an upstream release tag."
+            exit 1
+          fi
+          upstream_url="https://github.com/stablyai/orca/releases/tag/$tag"
+          echo "Target upstream release: $upstream_url"
+
+          rebuild=false
+          if [ "$EVENT_NAME" = "push" ] || [ "${FORCE:-false}" = "true" ]; then
+            rebuild=true
+          fi
+
+          # Drafts never appear under releases/tags/<tag>, so scan the full list
+          # (paginated: the fork accumulates ~2 RC releases/day, page 1 stops
+          # covering older tags within months).
+          ours_json="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" | jq -s 'add // []')"
+          published_count="$(jq -r --arg tag "$tag" '[.[] | select(.tag_name == $tag and (.draft | not))] | length' <<<"$ours_json")"
+          any_count="$(jq -r --arg tag "$tag" '[.[] | select(.tag_name == $tag)] | length' <<<"$ours_json")"
+
+          proceed=true
+          if [ "$published_count" != "0" ] && [ "$rebuild" != "true" ]; then
+            proceed=false
+            echo "Release $tag is already published in $GITHUB_REPOSITORY; skipping."
+          fi
+
+          if [ "$proceed" = "true" ]; then
+            if [ "$any_count" != "0" ]; then
+              # Deterministic rebuild: same tag, delete release(s) + tag, recreate.
+              # Deletion is per-release-id because drafts can duplicate a tag_name,
+              # and the tag ref is removed tolerantly: leftover DRAFTS never
+              # materialized refs/tags/<tag>, so gh's --cleanup-tag would 422 and
+              # fail the exact run that should recover a failed build.
+              jq -r --arg tag "$tag" '.[] | select(.tag_name == $tag) | .id' <<<"$ours_json" |
+                while read -r release_id; do
+                  gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$release_id"
+                done
+              gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" || true
+            fi
+            # Draft target: our main HEAD. GitHub only materializes the tag at
+            # publish time, so the tag in this repo ends up on our main — the
+            # updater only consumes release assets, never the tag's tree.
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --draft \
+              --target "$GITHUB_SHA" --title "$tag" \
+              --notes "Fork build of upstream $upstream_url in progress."
+          fi
+
+          {
+            echo "tag=$tag"
+            echo "proceed=$proceed"
+            echo "upstream_url=$upstream_url"
+          } >>"$GITHUB_OUTPUT"
+
+  build:
+    needs: resolve
+    if: needs.resolve.outputs.proceed == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS builds x64 + arm64 dmg/zip in one electron-builder run (the
+          # config's mac.target lists both arches, as upstream ships them).
+          - os: macos-14
+            platform: mac
+            eb_cache_path: |
+              ~/Library/Caches/electron
+              ~/Library/Caches/electron-builder
+          # Why windows-2022, not windows-latest: mirrored from upstream
+          # release-cut.yml — windows-latest moved to the VS 2026 image before
+          # node-gyp could detect it, breaking native dependency install.
+          - os: windows-2022
+            platform: win
+            eb_cache_path: |
+              ~\AppData\Local\electron\Cache
+              ~\AppData\Local\electron-builder\Cache
+          - os: ubuntu-22.04
+            platform: linux-x64
+            eb_cache_path: |
+              ~/.cache/electron
+              ~/.cache/electron-builder
+          # Mirrors upstream's linux arm64 leg (ubuntu-24.04-arm runner with
+          # ORCA_LINUX_ARM64_RELEASE=1 for the arm64 artifact naming).
+          - os: ubuntu-24.04-arm
+            platform: linux-arm64
+            eb_cache_path: |
+              ~/.cache/electron
+              ~/.cache/electron-builder
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    env:
+      # Mirrors upstream: Vite's web build crossed Node's default old-space
+      # ceiling on release runners.
+      NODE_OPTIONS: --max-old-space-size=4096
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # Full history + blobs: `git apply --3way` needs real preimage
+          # objects and the upstream tag fetch below is incremental over it.
+          fetch-depth: 0
+
+      - name: Fetch upstream tag and switch to it
+        shell: bash
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git remote add upstream https://github.com/stablyai/orca
+          # Fetch into a private ref: this repo publishes releases under the
+          # same tag names (pointing at OUR main), so refs/tags/<tag> can
+          # already exist locally with a different SHA and a plain tag fetch
+          # would refuse to clobber it.
+          git fetch --no-tags upstream "+refs/tags/$TAG:refs/upstream-release/$TAG"
+          git checkout -B fork-build "refs/upstream-release/$TAG"
+
+      - name: Restore fork tooling from our main
+        # The upstream tag's tree has no fork/ directory.
+        shell: bash
+        run: git checkout origin/main -- fork/
+
+      - name: Apply fork patches
+        # Exit 2 = some patches failed but the rest applied — continue and
+        # ship what applied; the publish job reports failures as an issue.
+        # Exit 1 = hard error (no patches, unreadable repo) — fail the leg.
+        id: apply
+        shell: bash
+        run: |
+          set +e
+          node fork/apply-patches.mjs
+          code=$?
+          set -e
+          echo "exit_code=$code" >>"$GITHUB_OUTPUT"
+          if [ "$code" -eq 1 ]; then
+            echo "::error::apply-patches hit a hard error"
+            exit 1
+          fi
+
+      - name: Upload apply report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: apply-report-${{ matrix.platform }}
+          path: fork/apply-report.json
+          if-no-files-found: warn
+
+      # pnpm must be on PATH before setup-node so setup-node can locate the
+      # store for caching (mirrors upstream). The pnpm version comes from the
+      # tag's package.json `packageManager` pin.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          # Mirrors upstream: resolves from the tag's package.json (engines.node = 24).
+          node-version-file: package.json
+          cache: pnpm
+
+      # Mirrors upstream: pnpm's bundled node-gyp has a non-executable
+      # gyp_main.py that breaks native postinstall on Linux runners.
+      - name: Use external node-gyp to avoid pnpm's bundled copy (Linux only)
+        if: runner.os == 'Linux'
+        run: |
+          npm install -g node-gyp@11.5.0
+          echo "npm_config_node_gyp=$(npm root -g)/node-gyp/bin/node-gyp.js" >> "$GITHUB_ENV"
+
+      # Mirrors upstream: AT-SPI bindings for build:release's computer-use
+      # verify step, and rpm for electron-builder's fpm backend.
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y python3-gi gir1.2-atspi-2.0 at-spi2-core xclip xdotool rpm
+
+      # Mirrors upstream: cache Electron binary + electron-builder tool
+      # downloads (saves ~30-90s per job).
+      - name: Cache electron-builder downloads
+        uses: actions/cache@v5
+        with:
+          path: ${{ matrix.eb_cache_path }}
+          key: electron-builder-${{ matrix.platform }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            electron-builder-${{ matrix.platform }}-
+
+      # Mirrors upstream: electron's postinstall downloads the Electron binary
+      # from GitHub's CDN, which occasionally 504s — retry instead of dying.
+      - name: Install dependencies
+        uses: nick-fields/retry@v4
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          retry_wait_seconds: 30
+          command: pnpm install --frozen-lockfile
+
+      # Mirrors upstream's telemetry build-identity classification. This fork
+      # does not set ORCA_POSTHOG_WRITE_KEY, so telemetry transport stays off
+      # regardless; the identity is kept for build parity only.
+      - name: Classify release tag for build identity
+        id: tag-classify
+        shell: bash
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+(\.[0-9A-Za-z]+)?$ ]]; then
+            identity=rc
+          elif [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            identity=stable
+          else
+            echo "::error::Tag $TAG does not match the stable or rc pattern"
+            exit 1
+          fi
+          echo "identity=$identity" >>"$GITHUB_OUTPUT"
+
+      - name: Build app
+        run: pnpm build:release
+        env:
+          ORCA_BUILD_IDENTITY: ${{ steps.tag-classify.outputs.identity }}
+
+      # Mirrors upstream: codesign rejects duplicate entitlements only after
+      # the expensive app build, so lint them first.
+      - name: Verify macOS entitlements
+        if: matrix.platform == 'mac'
+        run: pnpm verify:macos-entitlements
+
+      # ── macOS packaging: two modes, chosen by secret presence ─────────────
+      #   signed:   CSC_LINK/CSC_KEY_PASSWORD/APPLE_ID/APPLE_APP_SPECIFIC_PASSWORD/
+      #             APPLE_TEAM_ID present → upstream's ORCA_MAC_RELEASE=1 signed
+      #             + notarized path (forceCodeSigning on).
+      #   unsigned: secrets absent → local-style build; ORCA_MAC_RELEASE stays
+      #             unset so forceCodeSigning stays off and electron-builder
+      #             falls back to ad-hoc signing.
+      - name: Detect macOS signing secrets
+        id: mac-signing
+        if: matrix.platform == 'mac'
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          if [ -n "${CSC_LINK:-}" ] && [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]; then
+            echo "signed=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "signed=false" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify macOS signing environment
+        if: matrix.platform == 'mac' && steps.mac-signing.outputs.signed == 'true'
+        run: node config/scripts/verify-macos-release-env.mjs
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Package macOS (signed + notarized)
+        if: matrix.platform == 'mac' && steps.mac-signing.outputs.signed == 'true'
+        uses: nick-fields/retry@v4
+        with:
+          timeout_minutes: 45
+          max_attempts: 3
+          retry_wait_seconds: 30
+          command: node config/scripts/ensure-native-runtime.mjs --runtime=electron && ORCA_MAC_RELEASE=1 pnpm exec electron-builder --config config/electron-builder.config.cjs --mac --publish never
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Package macOS (unsigned)
+        if: matrix.platform == 'mac' && steps.mac-signing.outputs.signed == 'false'
+        run: node config/scripts/ensure-native-runtime.mjs --runtime=electron && pnpm exec electron-builder --config config/electron-builder.config.cjs --mac --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      # Windows ships UNSIGNED on this fork: no SignPath chain, and patch 0002
+      # removes the win.publisherName pin so electron-updater skips the
+      # Authenticode publisher check.
+      - name: Package Windows (unsigned)
+        if: matrix.platform == 'win'
+        shell: pwsh
+        run: |
+          node config/scripts/ensure-native-runtime.mjs --runtime=electron
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm exec electron-builder --config config/electron-builder.config.cjs --win --publish never
+
+      # Mirrors upstream: guard against the unpacked layout silently dropping
+      # the ConPTY runtime files node-pty needs at runtime.
+      - name: Verify Windows node-pty ConPTY runtime
+        if: matrix.platform == 'win'
+        shell: pwsh
+        run: |
+          $runtimeDir = 'dist/win-unpacked/resources/node_modules/node-pty/build/Release'
+          $requiredFiles = @(
+            "$runtimeDir/conpty.node",
+            "$runtimeDir/conpty/conpty.dll",
+            "$runtimeDir/conpty/OpenConsole.exe"
+          )
+          foreach ($file in $requiredFiles) {
+            if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
+              throw "Missing Windows node-pty runtime file: $file"
+            }
+            Get-Item -LiteralPath $file
+          }
+
+      - name: Package Linux x64
+        if: matrix.platform == 'linux-x64'
+        run: node config/scripts/ensure-native-runtime.mjs --runtime=electron && pnpm exec electron-builder --config config/electron-builder.config.cjs --linux AppImage deb rpm --x64 --publish never
+
+      - name: Package Linux arm64
+        if: matrix.platform == 'linux-arm64'
+        run: node config/scripts/ensure-native-runtime.mjs --runtime=electron && ORCA_LINUX_ARM64_RELEASE=1 pnpm exec electron-builder --config config/electron-builder.config.cjs --linux AppImage deb rpm --arm64 --publish never
+
+      # The in-app preflight HEAD-probes every asset the updater manifest names
+      # and treats a 404 as 'release not ready' — forever. Catch a manifest that
+      # references a missing or misnamed file here, per leg, before upload.
+      - name: Verify updater manifest references exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          manifests=(dist/latest*.yml)
+          if [ "${#manifests[@]}" -eq 0 ]; then
+            echo "::error::No latest*.yml updater manifest found in dist/"
+            exit 1
+          fi
+          MANIFESTS="${manifests[*]}" node <<'EOF'
+          const { readFileSync, existsSync } = require('fs');
+          const { join } = require('path');
+          let missing = 0;
+          for (const manifest of process.env.MANIFESTS.split(' ')) {
+            const text = readFileSync(manifest, 'utf8');
+            const names = new Set();
+            for (const match of text.matchAll(/^\s*(?:-\s*)?(?:url|path):\s*(.+?)\s*$/gm)) {
+              names.add(match[1].replace(/^['"]|['"]$/g, ''));
+            }
+            for (const name of names) {
+              if (existsSync(join('dist', name))) {
+                console.log(`${manifest}: ${name} ok`);
+              } else {
+                console.error(`::error::${manifest} references ${name}, which is missing from dist/`);
+                missing += 1;
+              }
+            }
+            if (names.size === 0) {
+              console.error(`::error::${manifest} references no assets — manifest parse failure?`);
+              missing += 1;
+            }
+          }
+          process.exit(missing > 0 ? 1 : 0);
+          EOF
+
+      # Artifact names stay exactly as upstream (orca-macos-<arch>.dmg,
+      # orca-windows-setup.exe, orca-linux[-arm64].AppImage, ...) because the
+      # latest*.yml updater manifests reference them.
+      - name: Upload artifacts to draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(dist/*.dmg dist/*.zip dist/*.exe dist/*.blockmap dist/*.AppImage dist/*.deb dist/*.rpm dist/latest*.yml)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::No release artifacts found in dist/"
+            exit 1
+          fi
+          printf 'Uploading %s\n' "${files[@]}"
+          gh release upload "$TAG" "${files[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+
+  publish:
+    # All build legs must have produced and uploaded artifacts; a hard build
+    # failure leaves the draft unpublished for a human to inspect. Patch-level
+    # failures do NOT fail builds (exit 2 tolerated) and are reported below.
+    needs: [resolve, build]
+    if: needs.resolve.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download apply reports
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          # Zero matches exits non-zero; the notes step treats an empty reports
+          # dir as "patch state unknown" and files an issue, so don't die here.
+          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --pattern 'apply-report-*' --dir reports \
+            || echo "::warning::No apply-report artifacts were found for this run."
+
+      - name: Compose release notes with patch table
+        id: notes
+        env:
+          UPSTREAM_URL: ${{ needs.resolve.outputs.upstream_url }}
+        run: |
+          set -euo pipefail
+          node <<'EOF'
+          const fs = require('fs');
+          const path = require('path');
+          const dir = 'reports';
+          const platforms = [];
+          const byPatch = new Map();
+          for (const sub of fs.existsSync(dir) ? fs.readdirSync(dir).sort() : []) {
+            const file = path.join(dir, sub, 'apply-report.json');
+            if (!fs.existsSync(file)) continue;
+            const platform = sub.replace(/^apply-report-/, '');
+            platforms.push(platform);
+            const report = JSON.parse(fs.readFileSync(file, 'utf8'));
+            for (const r of report.results) {
+              if (!byPatch.has(r.patch)) byPatch.set(r.patch, { title: r.title, status: {} });
+              byPatch.get(r.patch).status[platform] = r.status;
+            }
+          }
+          let failed = false;
+          const lines = [];
+          lines.push(`Fork build of upstream release: ${process.env.UPSTREAM_URL}`);
+          lines.push('');
+          lines.push('## Fork patches');
+          lines.push('');
+          if (byPatch.size === 0) {
+            failed = true;
+            lines.push('No apply reports were produced — patch state unknown.');
+          } else {
+            lines.push(`| Patch | Title | ${platforms.join(' | ')} |`);
+            lines.push(`| --- | --- | ${platforms.map(() => '---').join(' | ')} |`);
+            for (const [patch, info] of [...byPatch.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+              const cells = platforms.map((p) => {
+                const s = info.status[p] ?? 'missing';
+                if (s !== 'applied') failed = true;
+                return s;
+              });
+              lines.push(`| \`${patch}\` | ${info.title} | ${cells.join(' | ')} |`);
+            }
+          }
+          lines.push('');
+          if (failed) {
+            lines.push('Some patches FAILED to apply; this release ships with the patches that did apply. See the tracking issue.');
+            lines.push('');
+          }
+          fs.writeFileSync('notes.md', lines.join('\n'));
+          fs.writeFileSync('failed.flag', failed ? 'true' : 'false');
+          EOF
+          echo "failed=$(cat failed.flag)" >>"$GITHUB_OUTPUT"
+
+      - name: File or update patch-failure issue
+        if: steps.notes.outputs.failed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          title="Patch failure on $TAG"
+          {
+            echo "One or more fork patches failed to apply while building \`$TAG\` (run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)."
+            echo ""
+            cat notes.md
+          } > issue.md
+          # Dedupe: update the existing open issue for this tag instead of
+          # filing a duplicate every scheduled run.
+          number="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number,title | jq -r --arg t "$title" '[.[] | select(.title == $t)][0].number // empty')"
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body-file issue.md
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body-file issue.md
+          fi
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # Mirrors upstream: prerelease is derived from the tag shape, a
+          # ground truth tooling can't rewrite.
+          if [[ "$TAG" == *"-rc."* ]]; then
+            prerelease=true
+          else
+            prerelease=false
+          fi
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --draft=false \
+            --prerelease="$prerelease" \
+            --notes-file notes.md

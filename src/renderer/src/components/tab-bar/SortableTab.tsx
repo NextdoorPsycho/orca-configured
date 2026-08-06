@@ -19,7 +19,7 @@ import {
 import { preventMiddleButtonDefault } from './middle-button-default-guard'
 import { SortableTabContextMenu } from './SortableTabContextMenu'
 import { translate } from '@/i18n/i18n'
-import { TAB_CONTAINER_WIDTH_CLASSES, TAB_LABEL_WIDTH_CLASSES } from './tab-width-rules'
+import { getTabContainerWidthClasses, TAB_LABEL_WIDTH_CLASSES } from './tab-width-rules'
 import { useOptionalShortcutLabel } from '@/hooks/useShortcutLabel'
 import { useTabStripPointerActivation } from './tab-strip-pointer-activation'
 import { TerminalTabLeadingIcon } from './TerminalTabLeadingIcon'
@@ -106,6 +106,9 @@ export default function SortableTab({
   )
   const renamingTabId = useAppStore((s) => s.renamingTabId)
   const setRenamingTabId = useAppStore((s) => s.setRenamingTabId)
+  const unlimitedTabWidth = useAppStore(
+    (s) => s.settings?.experimentalTerminalTabsUnlimitedWidth === true
+  )
 
   // Why: shellOverride is stamped at create time, so changing the default shell later won't repaint existing tabs.
   const shellForIcon = tab.shellOverride
@@ -402,7 +405,7 @@ export default function SortableTab({
   return (
     <>
       <div
-        className={TAB_CONTAINER_WIDTH_CLASSES}
+        className={getTabContainerWidthClasses(unlimitedTabWidth)}
         onContextMenuCapture={(event) => {
           event.preventDefault()
           window.dispatchEvent(new Event(CLOSE_ALL_CONTEXT_MENUS_EVENT))

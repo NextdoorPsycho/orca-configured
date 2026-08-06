@@ -34,7 +34,8 @@ import {
 } from './drop-indicator'
 import { preventMiddleButtonDefault } from './middle-button-default-guard'
 import { translate } from '@/i18n/i18n'
-import { TAB_CONTAINER_WIDTH_CLASSES, TAB_LABEL_WIDTH_CLASSES } from './tab-width-rules'
+import { useAppStore } from '@/store'
+import { getTabContainerWidthClasses, TAB_LABEL_WIDTH_CLASSES } from './tab-width-rules'
 import { TabWorkspaceLayoutMenuSection } from './TabWorkspaceLayoutMenuSection'
 import { useTabStripPointerActivation } from './tab-strip-pointer-activation'
 import { TAB_CONTEXT_MENU_CONTENT_CLASS } from './tab-context-menu-sizing'
@@ -156,6 +157,9 @@ export default function BrowserTab({
   })
   const [menuOpen, setMenuOpen] = useState(false)
   const [menuPoint, setMenuPoint] = useState({ x: 0, y: 0 })
+  const unlimitedTabWidth = useAppStore(
+    (s) => s.settings?.experimentalTerminalTabsUnlimitedWidth === true
+  )
 
   // Why: about:blank and other non-http URLs should not be sent to the
   // system browser. Disable the context menu item instead of silently
@@ -261,7 +265,7 @@ export default function BrowserTab({
   return (
     <>
       <div
-        className={TAB_CONTAINER_WIDTH_CLASSES}
+        className={getTabContainerWidthClasses(unlimitedTabWidth)}
         onContextMenuCapture={(event) => {
           event.preventDefault()
           window.dispatchEvent(new Event(CLOSE_ALL_CONTEXT_MENUS_EVENT))

@@ -152,7 +152,7 @@ function prepareMacDevElectronApp() {
   // once, macOS may route a notification click to the other instance —
   // Electron drops clicks for notification ids it didn't create, so the
   // click is lost, not misdirected.
-  const bundleId = 'com.stablyai.orca.dev'
+  const bundleId = 'art.arcane.orca.configured.dev'
   const helperBundleId = `${bundleId}.helper`
   process.env.ORCA_DEV_MACOS_BUNDLE_ID = bundleId
   const expectedMarker = JSON.stringify(

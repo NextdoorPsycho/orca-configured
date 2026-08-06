@@ -5,6 +5,7 @@ import { translateSearchKeyword } from './settings-search-keywords'
 import { getNewWorktreeCardStyleSearchEntry } from './new-worktree-card-style-search-entry'
 import { getNativeChatExperimentalSearchEntry } from './native-chat-experimental-search-entry'
 import { getEphemeralVmsSearchEntry } from './ephemeral-vms-search'
+import { getTogglesExperimentalSearchEntry } from './toggles-experimental-search-entry'
 
 export const getExperimentalPaneSearchEntries = createLocalizedCatalog(
   (): SettingsSearchEntry[] => [
@@ -229,7 +230,8 @@ export const getExperimentalPaneSearchEntries = createLocalizedCatalog(
       ]
     },
     getNewWorktreeCardStyleSearchEntry(),
-    getEphemeralVmsSearchEntry()
+    getEphemeralVmsSearchEntry(),
+    getTogglesExperimentalSearchEntry()
   ]
 )
 
@@ -276,6 +278,12 @@ export function getExperimentalSearchEntry() {
     ),
     ephemeralVms: findEntry(
       translate('auto.components.settings.ephemeralVms.search.cloudVmTitle', 'Cloud VM')
+    ),
+    unlimitedTabWidth: findEntry(
+      translate(
+        'auto.components.settings.experimental.search.toggles.unlimitedTabWidthTitle',
+        'Unlimited tab width'
+      )
     )
   } as const
 }

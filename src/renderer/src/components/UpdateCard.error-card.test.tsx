@@ -103,7 +103,9 @@ describe('UpdateCard Windows signature failures', () => {
     expect(screen.queryByText(message)).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: 'Check official releases' }))
-    expect(openUrl).toHaveBeenCalledWith('https://github.com/stablyai/orca/releases')
+    expect(openUrl).toHaveBeenCalledWith(
+      'https://github.com/NextdoorPsycho/orca-configured/releases'
+    )
     expect(openUrl).not.toHaveBeenCalledWith(expect.stringContaining('/tag/'))
   })
 
@@ -259,7 +261,9 @@ describe('UpdateCard Linux package-install recovery', () => {
     await flushActions()
 
     fireEvent.click(screen.getByRole('button', { name: 'Download Manually' }))
-    expect(openUrl).toHaveBeenCalledWith('https://github.com/stablyai/orca/releases/tag/v1.4.200')
+    expect(openUrl).toHaveBeenCalledWith(
+      'https://github.com/NextdoorPsycho/orca-configured/releases/tag/v1.4.200'
+    )
   })
 
   it('keeps generic errors on the generic card when no recovery is attached', () => {

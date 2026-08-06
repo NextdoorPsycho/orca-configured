@@ -1,4 +1,4 @@
 provider: github
-owner: stablyai
-repo: orca
+owner: NextdoorPsycho
+repo: orca-configured
 updaterCacheDirName: orca-updater

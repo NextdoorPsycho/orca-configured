@@ -41,6 +41,19 @@ vi.mock('@dnd-kit/sortable', () => ({
   })
 }))
 
+vi.mock('@/store', () => {
+  // Why: the alias and '../../store' resolve to the same module, so this mock also
+  // serves getState() consumers reached while the harness expands nested components.
+  const state = {
+    settings: null,
+    unifiedTabsByWorktree: {},
+    groupsByWorktree: {}
+  }
+  const useAppStore = (selector: (current: typeof state) => unknown): unknown => selector(state)
+  useAppStore.getState = (): typeof state => state
+  return { useAppStore }
+})
+
 vi.mock('lucide-react', () => ({
   ArrowDown: function ArrowDown(props: Record<string, unknown>) {
     return { type: 'ArrowDown', props }
