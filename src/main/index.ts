@@ -151,6 +151,7 @@ import {
 } from './startup/dev-education-suppression'
 import { maybeRedirectAppImageCliLaunch } from './startup/appimage-cli-redirect'
 import { maybeRedirectPackagedCliEntryLaunch } from './startup/packaged-cli-entry-redirect'
+import { maybeOfferOfficialOrcaImport } from './startup/official-orca-import'
 import { startFirstWindowStartupServices } from './startup/first-window-startup-services'
 import { recoverLegacyWorkerTerminalsForRendererStartup } from './startup/legacy-worker-renderer-recovery'
 import { createWslCliReconciliationStartupBarrier } from './startup/wsl-cli-reconciliation-startup-barrier'
@@ -2061,6 +2062,12 @@ void app.whenReady().then(async () => {
     managedWslCliReconciliationReady
   )
 
+  // Why before ensureActiveOrcaProfile/new Store: an accepted import seeds the orca-data.json
+  // the Store load reads. Never in serve mode: headless hosts cannot dismiss a native dialog,
+  // and awaiting one would hang startup before the serve readiness signal is emitted.
+  if (!isServeMode) {
+    await maybeOfferOfficialOrcaImport(getCanonicalUserDataPath())
+  }
   const activeOrcaProfile = ensureActiveOrcaProfile()
   store = new Store({ dataFile: activeOrcaProfile.dataFile })
   wslHookRelayManager.setManagedHookSettingsResolver(() => store?.getSettings() ?? null)

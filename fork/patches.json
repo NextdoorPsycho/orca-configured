@@ -1,13 +1,16 @@
 [
   {
     "file": "0001-experimental-toggles-unlimited-tab-width.patch",
-    "title": "Experimental Toggles section + unlimited tab width toggle",
+    "title": "Fork Changes settings pane + unlimited tab width toggle",
     "paths": [
       "src/shared/types.ts",
       "src/shared/constants.ts",
       "src/shared/constants.test.ts",
       "src/renderer/src/components/tab-bar/",
       "src/renderer/src/components/settings/",
+      "src/renderer/src/hooks/useSettingsNavigationMetadata.ts",
+      "src/renderer/src/hooks/useSettingsNavigationMetadata.test.ts",
+      "src/renderer/src/lib/settings-navigation-types.ts",
       "src/renderer/src/i18n/locales/en.json",
       "tests/e2e/tab-width-unlimited-toggle.spec.ts"
     ]
@@ -51,6 +54,15 @@
       "src/shared/local-build-compatibility-contract.ts",
       "src/shared/local-build-compatibility.test.ts",
       "src/shared/release-channel.test.ts"
+    ]
+  },
+  {
+    "file": "0003-first-run-import-from-official-orca.patch",
+    "title": "First-run prompt importing settings/workspaces from an official Orca install",
+    "paths": [
+      "src/main/startup/official-orca-import.ts",
+      "src/main/startup/official-orca-import.test.ts",
+      "src/main/index.ts"
     ]
   }
 ]

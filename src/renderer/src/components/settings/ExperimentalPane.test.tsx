@@ -350,44 +350,6 @@ describe('ExperimentalPane', () => {
     root.unmount()
   })
 
-  it('renders the Toggles section with an off-by-default unlimited tab width switch', () => {
-    const settings = getDefaultSettings('/tmp')
-    const markup = renderToStaticMarkup(
-      <ExperimentalPane settings={settings} updateSettings={vi.fn()} />
-    )
-    const entry = getExperimentalPaneSearchEntries().find(
-      (searchEntry) => searchEntry.title === 'Unlimited tab width'
-    )
-
-    expect(settings.experimentalTerminalTabsUnlimitedWidth).toBe(false)
-    expect(markup).toContain('Toggles')
-    expect(markup).toContain('Unlimited tab width')
-    expect(markup).toContain('aria-checked="false"')
-    expect(getExperimentalPaneSearchEntries().map((searchEntry) => searchEntry.title)).toContain(
-      'Unlimited tab width'
-    )
-    expect(entry?.targetSectionId).toBe('experimental-toggles')
-  })
-
-  it('enables unlimited tab width through the Toggles section switch', async () => {
-    const updateSettings = vi.fn()
-    const { root, container } = await renderExperimentalPane({ updateSettings })
-
-    const switchButton = container.querySelector<HTMLButtonElement>(
-      '#experimental-toggles button[role="switch"]'
-    )
-    if (!switchButton) {
-      throw new Error('Unlimited tab width switch was not rendered')
-    }
-
-    await act(async () => {
-      switchButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    })
-
-    expect(updateSettings).toHaveBeenCalledWith({ experimentalTerminalTabsUnlimitedWidth: true })
-    root.unmount()
-  })
-
   it('enables new card style through the experimental switch', async () => {
     const updateSettings = vi.fn()
     const { root, container } = await renderExperimentalPane({ updateSettings })

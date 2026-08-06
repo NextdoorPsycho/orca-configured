@@ -13,6 +13,7 @@ import {
   Cable,
   FlaskConical,
   GitBranch,
+  GitFork,
   Globe,
   Keyboard,
   ListChecks,
@@ -72,6 +73,7 @@ import { getAdvancedPaneSearchEntries } from '@/components/settings/advanced-sea
 import { getShortcutsPaneSearchEntries } from '@/components/settings/shortcuts-search'
 import { getStatsPaneSearchEntries } from '@/components/stats/stats-search'
 import { getExperimentalPaneSearchEntries } from '@/components/settings/experimental-search'
+import { getForkChangesPaneSearchEntries } from '@/components/settings/fork-changes-search'
 import { getPluginsPaneSearchEntries } from '@/components/settings/plugins-search'
 import { getRepositoryPaneSearchEntries } from '@/components/settings/repository-search'
 import { buildSettingsProjectList } from '@/components/settings/settings-project-list'
@@ -569,6 +571,17 @@ export function buildSettingsNavigationMetadata({
       ),
       icon: FlaskConical,
       searchEntries: getExperimentalPaneSearchEntries(),
+      group: 'experimental'
+    },
+    {
+      id: 'fork-changes',
+      title: translate('auto.hooks.useSettingsNavigationMetadata.forkChangesTitle', 'Fork Changes'),
+      description: translate(
+        'auto.hooks.useSettingsNavigationMetadata.forkChangesDescription',
+        'Tweaks specific to this fork of Orca, layered on top of upstream.'
+      ),
+      icon: GitFork,
+      searchEntries: getForkChangesPaneSearchEntries(),
       group: 'experimental'
     },
     ...(showDesktopOnlySettings

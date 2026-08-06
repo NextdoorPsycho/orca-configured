@@ -1,5 +1,5 @@
 /**
- * E2E for the Experimental > Toggles > "Unlimited tab width" setting
+ * E2E for the Fork Changes > "Unlimited tab width" setting
  * (experimentalTerminalTabsUnlimitedWidth): enabling it live must let a
  * long-titled terminal tab widen past the default max-w-[280px] cap, and
  * disabling it must restore the cap without a reload. Store calls are setup
@@ -72,7 +72,7 @@ test.describe('Unlimited tab width toggle', () => {
       .toBeLessThanOrEqual(CAPPED_MAX_PX)
   })
 
-  test('the Toggles row is searchable and its switch flips the setting', async ({
+  test('the Fork Changes row is searchable and its switch flips the setting', async ({
     orcaPage
   }, testInfo) => {
     await orcaPage.evaluate(async () => {
@@ -89,10 +89,9 @@ test.describe('Unlimited tab width toggle', () => {
     await expect(searchInput).toBeVisible()
     await searchInput.fill('unlimited tab width')
 
-    await orcaPage.getByText('Experimental', { exact: true }).first().click()
-    await expect(orcaPage.getByRole('heading', { name: 'Toggles', exact: true })).toBeVisible()
+    await orcaPage.getByText('Fork Changes', { exact: true }).first().click()
 
-    const row = orcaPage.locator('#experimental-toggles')
+    const row = orcaPage.locator('#fork-changes-unlimited-tab-width')
     await expect(row.getByText('Unlimited tab width', { exact: true }).first()).toBeVisible()
 
     const switchButton = row.locator('button[role="switch"]')
@@ -105,7 +104,7 @@ test.describe('Unlimited tab width toggle', () => {
     )
     expect(persisted).toBe(true)
 
-    await testInfo.attach('toggles-section', {
+    await testInfo.attach('fork-changes-section', {
       body: await orcaPage.screenshot(),
       contentType: 'image/png'
     })

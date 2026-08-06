@@ -871,7 +871,9 @@
         "linearDescription": "How Linear works in Orca, setup checklist, agent skill, and example prompts.",
         "pluginsTitle": "Plugins",
         "pluginsDescription": "Install and manage experimental Orca plugins.",
-        "tasksDescription": "Connect providers, install the Linear skill, and choose what appears in Tasks."
+        "tasksDescription": "Connect providers, install the Linear skill, and choose what appears in Tasks.",
+        "forkChangesTitle": "Fork Changes",
+        "forkChangesDescription": "Tweaks specific to this fork of Orca, layered on top of upstream."
       },
       "useAppMenuPaste": {
         "pasteTooLarge": "Paste is too large."
@@ -7084,7 +7086,9 @@
           "devDescription": "Dev-only tools for exercising UI states.",
           "linearTitle": "Linear",
           "linearDescription": "How Linear works in Orca, setup checklist, agent skill, and example prompts.",
-          "tasksDescription": "Connect providers, install the Linear skill, and choose what appears in Tasks."
+          "tasksDescription": "Connect providers, install the Linear skill, and choose what appears in Tasks.",
+          "forkChangesTitle": "Fork Changes",
+          "forkChangesDescription": "Tweaks specific to this fork of Orca, layered on top of upstream."
         },
         "SettingsFormControls": {
           "42a4d15a30": "No matching fonts.",
@@ -8251,10 +8255,6 @@
             "agentDashboard": {
               "title": "Agent Dashboard",
               "description": "Kanban board for monitoring agents across worktrees, in-window or as a pop-out."
-            },
-            "toggles": {
-              "unlimitedTabWidthTitle": "Unlimited tab width",
-              "unlimitedTabWidthDescription": "Remove the maximum width cap on terminal pane tabs so titles get all the space they need."
             }
           }
         },
@@ -10305,13 +10305,17 @@
           "accessHint": "Allow microphone access to list input devices.",
           "allowAccess": "Allow access"
         },
-        "TogglesExperimentalGroup": {
-          "title": "Toggles",
-          "description": "Small behavior tweaks for this fork of Orca.",
+        "ForkChangesPane": {
           "unlimitedTabWidth": {
             "title": "Unlimited tab width",
             "copy": "Remove the maximum width cap on terminal pane tabs so titles get all the space they need.",
             "toggleLabel": "Toggle unlimited tab width"
+          }
+        },
+        "forkChanges": {
+          "search": {
+            "unlimitedTabWidthTitle": "Unlimited tab width",
+            "unlimitedTabWidthDescription": "Remove the maximum width cap on terminal pane tabs so titles get all the space they need."
           }
         }
       },

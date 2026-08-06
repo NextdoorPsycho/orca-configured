@@ -35,6 +35,7 @@ const SETTINGS_NAV_TARGETS = [
   'stats',
   'ssh',
   'experimental',
+  'fork-changes',
   'plugins',
   'agents',
   'orchestration',

@@ -143,8 +143,29 @@ describe('settings navigation metadata', () => {
     const desktopIds = desktopSections.map((section) => section.id)
 
     expect(desktopSections.find((section) => section.id === 'plugins')?.group).toBe('experimental')
-    expect(desktopIds.indexOf('plugins')).toBe(desktopIds.indexOf('experimental') + 1)
+    expect(desktopIds.indexOf('plugins')).toBe(desktopIds.indexOf('fork-changes') + 1)
     expect(ids({ isWebClient: true })).not.toContain('plugins')
+  })
+
+  it('places Fork Changes immediately after Experimental in the experimental group', () => {
+    const desktopSections = buildSettingsNavigationMetadata({
+      isMac: false,
+      isWindows: false,
+      isWebClient: false,
+      repos: [repo]
+    })
+    const desktopIds = desktopSections.map((section) => section.id)
+    const forkChanges = desktopSections.find((section) => section.id === 'fork-changes')
+
+    expect(forkChanges?.group).toBe('experimental')
+    expect(desktopIds.indexOf('fork-changes')).toBe(desktopIds.indexOf('experimental') + 1)
+    expect(
+      forkChanges?.searchEntries.find((entry) => entry.title === 'Unlimited tab width')
+        ?.targetSectionId
+    ).toBe('fork-changes-unlimited-tab-width')
+
+    const webIds = ids({ isWebClient: true })
+    expect(webIds.indexOf('fork-changes')).toBe(webIds.indexOf('experimental') + 1)
   })
 
   it('omits Windows project runtime search entries when the active host is unsupported', () => {

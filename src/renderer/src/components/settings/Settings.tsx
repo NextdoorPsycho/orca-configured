@@ -51,6 +51,7 @@ import { NotificationsPane } from './NotificationsPane'
 import { VoicePane } from './VoicePane'
 import { SshPane } from './SshPane'
 import { ExperimentalPane } from './ExperimentalPane'
+import { ForkChangesPane } from './ForkChangesPane'
 import { PluginsSettingsSection } from './PluginsSettingsSection'
 import { AgentsPane } from './AgentsPane'
 import { OrchestrationPane } from './OrchestrationPane'
@@ -1787,6 +1788,23 @@ function Settings(): React.JSX.Element {
                       updateSettings={updateSettings}
                       hiddenExperimentalUnlocked={hiddenExperimentalUnlocked}
                     />
+                  ) : null}
+                </SettingsSection>
+
+                <SettingsSection
+                  id="fork-changes"
+                  title={translate(
+                    'auto.components.settings.Settings.forkChangesTitle',
+                    'Fork Changes'
+                  )}
+                  description={translate(
+                    'auto.components.settings.Settings.forkChangesDescription',
+                    'Tweaks specific to this fork of Orca, layered on top of upstream.'
+                  )}
+                  searchEntries={getSectionSearchEntries('fork-changes')}
+                >
+                  {isSectionMounted('fork-changes') ? (
+                    <ForkChangesPane settings={settings} updateSettings={updateSettings} />
                   ) : null}
                 </SettingsSection>
 
