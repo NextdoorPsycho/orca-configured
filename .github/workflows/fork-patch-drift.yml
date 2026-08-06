@@ -25,7 +25,8 @@ jobs:
         run: node fork/export-patches.mjs --check
 
       - name: Verify fork version scheme
+        # semver installs into RUNNER_TEMP (a bare npm install fights the repo's
+        # pnpm pin); NODE_PATH lets the self-test's require() find it there.
         run: |
-          corepack enable pnpm >/dev/null 2>&1 || true
-          npm install --no-save semver >/dev/null 2>&1
-          node fork/fork-release-version.mjs --test
+          npm install --prefix "$RUNNER_TEMP/semver-probe" semver
+          NODE_PATH="$RUNNER_TEMP/semver-probe/node_modules" node fork/fork-release-version.mjs --test
