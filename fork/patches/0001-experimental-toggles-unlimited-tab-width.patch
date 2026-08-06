@@ -771,7 +771,7 @@ index 15fdd70342f5256a350d3782d5127415086f680a..4c226bd56e09a060b0aaed308df8bd7e
        ? [
            {
 diff --git a/src/renderer/src/i18n/locales/en.json b/src/renderer/src/i18n/locales/en.json
-index 29218566eb87367c3cc26eb85c810c1ec1fca476..b490eba5601ec51eb66cb10c7b6b02f58cca4816 100644
+index 29218566eb87367c3cc26eb85c810c1ec1fca476..dd63313b67391f4bbc675057e2545a267cd56f2c 100644
 --- a/src/renderer/src/i18n/locales/en.json
 +++ b/src/renderer/src/i18n/locales/en.json
 @@ -871,7 +871,9 @@
@@ -785,7 +785,19 @@ index 29218566eb87367c3cc26eb85c810c1ec1fca476..b490eba5601ec51eb66cb10c7b6b02f5
        },
        "useAppMenuPaste": {
          "pasteTooLarge": "Paste is too large."
-@@ -7084,7 +7086,9 @@
+@@ -3355,7 +3357,10 @@
+             "248ee5d8ef": "Orca v{{value0}} downloading… {{value1}}%",
+             "57a29c3b0e": "Update ready",
+             "fd1d3b3a1d": "Update downloading, {{value0}} percent. Click to expand.",
+-            "9d13213a56": "Orca v{{value0}} ready to install"
++            "9d13213a56": "Orca v{{value0}} ready to install",
++            "availableAria": "Update available. Click to open the update prompt.",
++            "availableLabel": "Update available",
++            "availableTooltip": "Orca v{{value0}} is available — click to update"
+           },
+           "WorkspaceSpaceCompactPanel": {
+             "a471aa9c24": "Updated",
+@@ -7084,7 +7089,9 @@
            "devDescription": "Dev-only tools for exercising UI states.",
            "linearTitle": "Linear",
            "linearDescription": "How Linear works in Orca, setup checklist, agent skill, and example prompts.",
@@ -796,7 +808,7 @@ index 29218566eb87367c3cc26eb85c810c1ec1fca476..b490eba5601ec51eb66cb10c7b6b02f5
          },
          "SettingsFormControls": {
            "42a4d15a30": "No matching fonts.",
-@@ -10300,6 +10304,40 @@
+@@ -10300,6 +10307,40 @@
            "description": "Input device used for voice dictation. System default follows the OS microphone setting.",
            "accessHint": "Allow microphone access to list input devices.",
            "allowAccess": "Allow access"

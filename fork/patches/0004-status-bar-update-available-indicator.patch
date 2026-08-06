@@ -1,0 +1,195 @@
+diff --git a/src/renderer/src/assets/main.css b/src/renderer/src/assets/main.css
+index 85d6a2c116a2b6971d69b58d9873ead22e6aa5c7..f53ebe3c001502119eb8940a3c2e85eafcb91969 100644
+--- a/src/renderer/src/assets/main.css
++++ b/src/renderer/src/assets/main.css
+@@ -3583,3 +3583,23 @@ html.onboarding-tour-start-transition::view-transition-new(root) {
+     inset 0 1px 0 0 color-mix(in srgb, var(--foreground) 5%, transparent),
+     0 10px 24px rgba(0, 0, 0, 0.18);
+ }
++
++/* Fork: bottom-bar update-available indicator — slow white/black crossfade
++   (3s per fade leg) so it registers without nagging. */
++.fork-update-pulse {
++  animation: fork-update-pulse 6s ease-in-out infinite;
++}
++@keyframes fork-update-pulse {
++  0%,
++  100% {
++    color: #ffffff;
++  }
++  50% {
++    color: #000000;
++  }
++}
++@media (prefers-reduced-motion: reduce) {
++  .fork-update-pulse {
++    animation: none;
++  }
++}
+diff --git a/src/renderer/src/components/status-bar/UpdateStatusSegment.test.tsx b/src/renderer/src/components/status-bar/UpdateStatusSegment.test.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..98c78c558636264f367b27e01fe2de7e4ae704fa
+--- /dev/null
++++ b/src/renderer/src/components/status-bar/UpdateStatusSegment.test.tsx
+@@ -0,0 +1,109 @@
++// @vitest-environment happy-dom
++
++import { act } from 'react'
++import { renderToStaticMarkup } from 'react-dom/server'
++import { createRoot } from 'react-dom/client'
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
++import type { UpdateStatus } from '../../../../shared/types'
++import { TooltipProvider } from '@/components/ui/tooltip'
++import { UpdateStatusSegment } from './UpdateStatusSegment'
++
++const storeState = vi.hoisted(() => ({
++  current: {
++    updateStatus: { state: 'idle' } as UpdateStatus,
++    updateCardCollapsed: false,
++    dismissedUpdateVersion: null as string | null,
++    setUpdateCardCollapsed: vi.fn(),
++    clearDismissedUpdateVersion: vi.fn()
++  }
++}))
++
++vi.mock('../../store', () => ({
++  useAppStore: (selector: (state: typeof storeState.current) => unknown) =>
++    selector(storeState.current)
++}))
++
++beforeEach(() => {
++  storeState.current.updateStatus = { state: 'idle' } as UpdateStatus
++  storeState.current.updateCardCollapsed = false
++  storeState.current.dismissedUpdateVersion = null
++  storeState.current.setUpdateCardCollapsed = vi.fn()
++  storeState.current.clearDismissedUpdateVersion = vi.fn()
++})
++
++afterEach(() => {
++  document.body.innerHTML = ''
++})
++
++function markup(): string {
++  return renderToStaticMarkup(
++    <TooltipProvider>
++      <UpdateStatusSegment compact={false} iconOnly={false} />
++    </TooltipProvider>
++  )
++}
++
++describe('UpdateStatusSegment', () => {
++  it('renders nothing while idle or checking', () => {
++    expect(markup()).toBe('')
++    storeState.current.updateStatus = { state: 'checking' } as UpdateStatus
++    expect(markup()).toBe('')
++  })
++
++  it('pulses a crossfading update icon when an update is available', () => {
++    storeState.current.updateStatus = {
++      state: 'available',
++      version: '1.4.174-rc.0.fork.9',
++      changelog: null
++    } as UpdateStatus
++
++    const html = markup()
++    expect(html).toContain('fork-update-pulse')
++    expect(html).toContain('Update available')
++  })
++
++  it('keeps the downloading percent segment intact', () => {
++    storeState.current.updateStatus = {
++      state: 'downloading',
++      version: '1.4.174-rc.0.fork.9',
++      percent: 42
++    } as UpdateStatus
++
++    const html = markup()
++    expect(html).toContain('42%')
++    expect(html).not.toContain('fork-update-pulse')
++  })
++
++  it('restores a dismissed update card when the available icon is clicked', async () => {
++    storeState.current.updateStatus = {
++      state: 'available',
++      version: '1.4.174-rc.0.fork.9',
++      changelog: null
++    } as UpdateStatus
++    storeState.current.dismissedUpdateVersion = '1.4.174-rc.0.fork.9'
++    storeState.current.updateCardCollapsed = true
++
++    const container = document.createElement('div')
++    document.body.appendChild(container)
++    const root = createRoot(container)
++    await act(async () => {
++      root.render(
++        <TooltipProvider>
++          <UpdateStatusSegment compact={false} iconOnly={false} />
++        </TooltipProvider>
++      )
++    })
++
++    const button = container.querySelector<HTMLButtonElement>('button')
++    if (!button) {
++      throw new Error('available segment did not render a button')
++    }
++    await act(async () => {
++      button.dispatchEvent(new MouseEvent('click', { bubbles: true }))
++    })
++
++    expect(storeState.current.clearDismissedUpdateVersion).toHaveBeenCalled()
++    expect(storeState.current.setUpdateCardCollapsed).toHaveBeenCalledWith(false)
++    root.unmount()
++  })
++})
+diff --git a/src/renderer/src/components/status-bar/UpdateStatusSegment.tsx b/src/renderer/src/components/status-bar/UpdateStatusSegment.tsx
+index af41d79ea48bfe981a4fe60caeb04f07caeea620..492712dbdae0f7428343b6e52683ef85fbd680ce 100644
+--- a/src/renderer/src/components/status-bar/UpdateStatusSegment.tsx
++++ b/src/renderer/src/components/status-bar/UpdateStatusSegment.tsx
+@@ -16,6 +16,47 @@ export function UpdateStatusSegment({
+   const status = useAppStore((s) => s.updateStatus)
+   const collapsed = useAppStore((s) => s.updateCardCollapsed)
+   const setCollapsed = useAppStore((s) => s.setUpdateCardCollapsed)
++  const clearDismissedUpdateVersion = useAppStore((s) => s.clearDismissedUpdateVersion)
++
++  // Fork: 'available' pulses a subtle white/black crossfade icon here; clicking
++  // it re-surfaces the update card even after a dismissal.
++  if (status.state === 'available') {
++    return (
++      <Tooltip>
++        <TooltipTrigger asChild>
++          <button
++            type="button"
++            onClick={() => {
++              clearDismissedUpdateVersion()
++              setCollapsed(false)
++            }}
++            className="inline-flex items-center gap-1.5 cursor-pointer rounded px-1 py-0.5 hover:bg-accent/70"
++            aria-label={translate(
++              'auto.components.status.bar.UpdateStatusSegment.availableAria',
++              'Update available. Click to open the update prompt.'
++            )}
++          >
++            <Download className="fork-update-pulse size-3" />
++            {!iconOnly && (
++              <span className="text-[11px]">
++                {translate(
++                  'auto.components.status.bar.UpdateStatusSegment.availableLabel',
++                  'Update available'
++                )}
++              </span>
++            )}
++          </button>
++        </TooltipTrigger>
++        <TooltipContent side="top" sideOffset={6}>
++          {translate(
++            'auto.components.status.bar.UpdateStatusSegment.availableTooltip',
++            'Orca v{{value0}} is available — click to update',
++            { value0: status.version }
++          )}
++        </TooltipContent>
++      </Tooltip>
++    )
++  }
+ 
+   if (status.state !== 'downloading' && status.state !== 'downloaded' && status.state !== 'error') {
+     return null
