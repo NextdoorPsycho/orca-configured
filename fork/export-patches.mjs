@@ -80,6 +80,32 @@ function requireNoUntracked(paths) {
   }
 }
 
+// Main-only files that intentionally never ride in a patch (the release
+// pipeline itself, and the patch tooling CI restores from main).
+const MAIN_ONLY_PATH_PREFIXES = ['fork/', '.github/workflows/fork-']
+
+/** @param {string} file @param {string[]} specs @returns {boolean} */
+function isCoveredByPathspecs(file, specs) {
+  return specs.some((spec) =>
+    spec.endsWith('/') ? file.startsWith(spec) : file === spec || file.startsWith(`${spec}/`)
+  )
+}
+
+/** Committed changes vs the upstream base that no manifest pathspec claims. @param {string} base @param {{ paths: string[] }[]} manifest @returns {string[]} */
+function findUncoveredChangedFiles(base, manifest) {
+  const changed = git(['diff', '--name-only', base, 'HEAD'])
+    .toString()
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+  const specs = manifest.flatMap((entry) => entry.paths)
+  return changed.filter(
+    (file) =>
+      !MAIN_ONLY_PATH_PREFIXES.some((prefix) => file.startsWith(prefix)) &&
+      !isCoveredByPathspecs(file, specs)
+  )
+}
+
 /** @param {string} base @param {string[]} paths @returns {Buffer} */
 function generateDiff(base, paths) {
   return git([
@@ -152,6 +178,13 @@ function main() {
       const onDisk = readFileSync(onDiskPath)
       if (!fresh.equals(onDisk)) {
         stale.push(`${entry.file} (content differs from a fresh export)`)
+      }
+    }
+    // A file changed on main that no patch pathspec covers is silently ABSENT
+    // from CI builds (they apply patches to the upstream tag, never main's tree).
+    if (nameArgs.length === 0) {
+      for (const orphan of findUncoveredChangedFiles(base, manifest)) {
+        stale.push(`${orphan} (changed on main but covered by no patch pathspec)`)
       }
     }
     // A patch on disk that no manifest entry owns would still be applied by
