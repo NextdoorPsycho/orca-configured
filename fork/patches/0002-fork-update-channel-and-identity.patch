@@ -10,10 +10,20 @@ index f91b51c24eecfc4bde00196075f9dcb3a2f3f8b1..4792873329399cd9ebc5ecb0aa070cbc
 +repo: orca-configured
  updaterCacheDirName: orca-updater
 diff --git a/config/electron-builder.config.cjs b/config/electron-builder.config.cjs
-index e581cd7a44ed5d3afe233a423f97c090bef2fd3a..58022db44189452a7ce628270ae2bf48d7335d1c 100644
+index e581cd7a44ed5d3afe233a423f97c090bef2fd3a..f6cfdfd6d10d4c23521aaf8020a6106ede63e6e6 100644
 --- a/config/electron-builder.config.cjs
 +++ b/config/electron-builder.config.cjs
-@@ -35,7 +35,7 @@ const devChannelBuildVersion = isMacHourly
+@@ -22,6 +22,9 @@ const { verifySkillsCliRuntime } = require('./scripts/verify-skills-cli-runtime.
+ const isMacHourly = process.env.ORCA_MAC_HOURLY === '1'
+ const isMacAdhoc = process.env.ORCA_MAC_ADHOC === '1'
+ const isMacRelease = process.env.ORCA_MAC_RELEASE === '1' || isMacHourly || isMacAdhoc
++// Fork: sign-only mode — identity signing (Squirrel-validatable updates) without
++// notarization, so a plain Apple Development cert suffices with no Apple creds.
++const isMacSigned = process.env.ORCA_MAC_SIGNED === '1' || isMacRelease
+ const isLinuxArm64Release = process.env.ORCA_LINUX_ARM64_RELEASE === '1'
+ const localBuildVersion = isMacRelease ? undefined : process.env.ORCA_LOCAL_BUILD_VERSION
+ const devChannelBuildVersion = isMacHourly
+@@ -35,7 +38,7 @@ const devChannelBuildVersion = isMacHourly
  // to install. Keeping adhoc separate from hourly too means a branch build cannot
  // be picked up by someone who only meant to ride main.
  const devChannelRepo = isMacHourly ? 'orca-hourly' : isMacAdhoc ? 'orca-adhoc' : null
@@ -22,7 +32,7 @@ index e581cd7a44ed5d3afe233a423f97c090bef2fd3a..58022db44189452a7ce628270ae2bf48
  const featureWallResources = {
    from: 'resources/onboarding/feature-wall',
    to: 'onboarding/feature-wall'
-@@ -80,7 +80,7 @@ const winSpeechNativeResource = {
+@@ -80,7 +83,7 @@ const winSpeechNativeResource = {
  /** @type {import('electron-builder').Configuration} */
  module.exports = {
    appId,
@@ -31,7 +41,7 @@ index e581cd7a44ed5d3afe233a423f97c090bef2fd3a..58022db44189452a7ce628270ae2bf48
    ...(devChannelBuildVersion
      ? { extraMetadata: { version: devChannelBuildVersion } }
      : localBuildVersion
-@@ -273,11 +273,8 @@ module.exports = {
+@@ -273,11 +276,8 @@ module.exports = {
    },
    win: {
      executableName: 'Orca',
@@ -45,7 +55,7 @@ index e581cd7a44ed5d3afe233a423f97c090bef2fd3a..58022db44189452a7ce628270ae2bf48
      extraResources: [
        ...commonExtraResources,
        ...createPackagedRuntimeNodeModuleResources('win32'),
-@@ -312,6 +309,9 @@ module.exports = {
+@@ -312,6 +312,9 @@ module.exports = {
      include: resolve(__dirname, 'nsis', 'daemon-host-uninstall.nsh')
    },
    mac: {
@@ -55,7 +65,7 @@ index e581cd7a44ed5d3afe233a423f97c090bef2fd3a..58022db44189452a7ce628270ae2bf48
      icon: 'resources/build/icon.icns',
      entitlements: 'resources/build/entitlements.mac.plist',
      entitlementsInherit: 'resources/build/entitlements.mac.plist',
-@@ -391,7 +391,11 @@ module.exports = {
+@@ -391,11 +394,15 @@ module.exports = {
          target: 'zip',
          arch: ['x64', 'arm64']
        }
@@ -68,7 +78,12 @@ index e581cd7a44ed5d3afe233a423f97c090bef2fd3a..58022db44189452a7ce628270ae2bf48
    },
    // Why: release builds should fail if signing is unavailable instead of
    // silently downgrading to ad-hoc artifacts that look shippable in CI logs.
-@@ -432,7 +436,7 @@ module.exports = {
+-  forceCodeSigning: isMacRelease,
++  forceCodeSigning: isMacSigned,
+   dmg: {
+     artifactName: 'orca-macos-${arch}.${ext}'
+   },
+@@ -432,7 +439,7 @@ module.exports = {
        featureWallResources
      ],
      target: ['AppImage', 'deb'],
@@ -77,7 +92,7 @@ index e581cd7a44ed5d3afe233a423f97c090bef2fd3a..58022db44189452a7ce628270ae2bf48
      category: 'Utility'
    },
    appImage: {
-@@ -487,8 +491,8 @@ module.exports = {
+@@ -487,8 +494,8 @@ module.exports = {
    npmRebuild: true,
    publish: {
      provider: 'github',
@@ -88,6 +103,53 @@ index e581cd7a44ed5d3afe233a423f97c090bef2fd3a..58022db44189452a7ce628270ae2bf48
      releaseType: devChannelRepo ? 'prerelease' : 'release'
    }
  }
+@@ -527,20 +534,20 @@ function chmodMacServeSimHelpers(resourcesDir, electronPlatformName) {
+ 
+ async function signMacComputerUseHelper(helperAppPath, packager) {
+   if (!existsSync(helperAppPath)) {
+-    if (isMacRelease) {
++    if (isMacSigned) {
+       throw new Error(`Missing Orca Computer Use helper app at ${helperAppPath}`)
+     }
+     return
+   }
+   const codeSigningInfo =
+-    isMacRelease && process.env.CSC_LINK && packager?.codeSigningInfo?.value
++    isMacSigned && process.env.CSC_LINK && packager?.codeSigningInfo?.value
+       ? await packager.codeSigningInfo.value
+       : null
+   const identity =
+     process.env.ORCA_COMPUTER_MACOS_SIGN_IDENTITY ??
+     process.env.CSC_NAME ??
+     findInstalledMacSigningIdentity(codeSigningInfo?.keychainFile) ??
+-    (isMacRelease ? null : '-')
++    (isMacSigned ? null : '-')
+   if (!identity) {
+     throw new Error('Missing signing identity for Orca Computer Use helper app')
+   }
+@@ -554,19 +561,19 @@ async function signMacComputerUseHelper(helperAppPath, packager) {
+ 
+ async function signMacNotificationStatusHelper(helperPath, packager) {
+   if (!existsSync(helperPath)) {
+-    if (isMacRelease) {
++    if (isMacSigned) {
+       throw new Error(`Missing orca-notification-status helper at ${helperPath}`)
+     }
+     return
+   }
+   const codeSigningInfo =
+-    isMacRelease && process.env.CSC_LINK && packager?.codeSigningInfo?.value
++    isMacSigned && process.env.CSC_LINK && packager?.codeSigningInfo?.value
+       ? await packager.codeSigningInfo.value
+       : null
+   const identity =
+     process.env.CSC_NAME ??
+     findInstalledMacSigningIdentity(codeSigningInfo?.keychainFile) ??
+-    (isMacRelease ? null : '-')
++    (isMacSigned ? null : '-')
+   if (!identity) {
+     throw new Error('Missing signing identity for orca-notification-status helper')
+   }
 diff --git a/config/scripts/build-computer-macos.mjs b/config/scripts/build-computer-macos.mjs
 index 1730cfc77c4558d4a1a78c4a0a6a0cbb52692b1a..35cfb6872132343053399d0dbeff1d14d0cf1b90 100644
 --- a/config/scripts/build-computer-macos.mjs
@@ -154,10 +216,10 @@ index 3227d957b24ff054f17e25d7b8fa36679eaa9c68..190cd45f35305cd691f3458bde29ea17
        expect(config.forceCodeSigning).toBe(true)
 diff --git a/config/scripts/electron-builder-fork-identity.test.mjs b/config/scripts/electron-builder-fork-identity.test.mjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..9605aff7538c6cac5f8c07b602ca34486badf380
+index 0000000000000000000000000000000000000000..58209e8decd779e210cdd657a54b223eb002cc25
 --- /dev/null
 +++ b/config/scripts/electron-builder-fork-identity.test.mjs
-@@ -0,0 +1,29 @@
+@@ -0,0 +1,67 @@
 +// Fork-identity packaging assertions: 'Orca Configured' branding must never
 +// regress the updater asset naming or the bundle/executable layout.
 +import { readFileSync } from 'node:fs'
@@ -168,7 +230,45 @@ index 0000000000000000000000000000000000000000..9605aff7538c6cac5f8c07b602ca3448
 +const require = createRequire(import.meta.url)
 +const electronBuilderConfig = require('../electron-builder.config.cjs')
 +
++/** Re-requires the config under a temporary env, then restores env and module cache. */
++function withEnv(env, assert) {
++  const configPath = require.resolve('../electron-builder.config.cjs')
++  const keys = ['ORCA_MAC_RELEASE', 'ORCA_MAC_SIGNED', 'ORCA_MAC_HOURLY', 'ORCA_MAC_ADHOC']
++  const original = Object.fromEntries(keys.map((key) => [key, process.env[key]]))
++  try {
++    for (const key of keys) {
++      delete process.env[key]
++    }
++    Object.assign(process.env, env)
++    delete require.cache[configPath]
++    assert(require('../electron-builder.config.cjs'))
++  } finally {
++    for (const [key, value] of Object.entries(original)) {
++      if (value === undefined) {
++        delete process.env[key]
++      } else {
++        process.env[key] = value
++      }
++    }
++    delete require.cache[configPath]
++    require('../electron-builder.config.cjs')
++  }
++}
++
 +describe('electron-builder fork identity', () => {
++  it('ORCA_MAC_SIGNED enforces signing without requiring notarization', () => {
++    // Why: sign-only mode exists so Squirrel-validatable updates work from a
++    // plain Apple Development cert, with no notarization credentials at all.
++    withEnv({ ORCA_MAC_SIGNED: '1' }, (config) => {
++      expect(config.forceCodeSigning).toBe(true)
++      expect(config.mac.notarize).toBe(false)
++      expect(config.mac.hardenedRuntime).toBe(false)
++    })
++    withEnv({}, (config) => {
++      expect(config.forceCodeSigning).toBe(false)
++    })
++  })
++
 +  it('pins a space-free mac zip artifact name so manifests, uploads, and probes agree', () => {
 +    // Why: productName contains a space; the default zip name would diverge between
 +    // latest-mac.yml (safe name, dashes) and the GitHub asset (dots) -> permanent 404s.

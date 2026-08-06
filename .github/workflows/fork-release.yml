@@ -385,13 +385,17 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
         run: |
           if [ -n "${CSC_LINK:-}" ] && [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]; then
-            echo "signed=true" >>"$GITHUB_OUTPUT"
+            echo "mode=notarized" >>"$GITHUB_OUTPUT"
+          elif [ -n "${CSC_LINK:-}" ]; then
+            # Cert only: identity-sign (Squirrel-validatable updates) without
+            # notarization — works with a plain Apple Development cert.
+            echo "mode=signed" >>"$GITHUB_OUTPUT"
           else
-            echo "signed=false" >>"$GITHUB_OUTPUT"
+            echo "mode=unsigned" >>"$GITHUB_OUTPUT"
           fi
 
       - name: Verify macOS signing environment
-        if: matrix.platform == 'mac' && steps.mac-signing.outputs.signed == 'true'
+        if: matrix.platform == 'mac' && steps.mac-signing.outputs.mode == 'notarized'
         run: node config/scripts/verify-macos-release-env.mjs
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -401,7 +405,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: Package macOS (signed + notarized)
-        if: matrix.platform == 'mac' && steps.mac-signing.outputs.signed == 'true'
+        if: matrix.platform == 'mac' && steps.mac-signing.outputs.mode == 'notarized'
         uses: nick-fields/retry@v4
         with:
           timeout_minutes: 45
@@ -415,8 +419,20 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
+      - name: Package macOS (signed, not notarized)
+        if: matrix.platform == 'mac' && steps.mac-signing.outputs.mode == 'signed'
+        uses: nick-fields/retry@v4
+        with:
+          timeout_minutes: 45
+          max_attempts: 3
+          retry_wait_seconds: 30
+          command: node config/scripts/ensure-native-runtime.mjs --runtime=electron && ORCA_MAC_SIGNED=1 pnpm exec electron-builder --config config/electron-builder.config.cjs --mac --publish never
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+
       - name: Package macOS (unsigned)
-        if: matrix.platform == 'mac' && steps.mac-signing.outputs.signed == 'false'
+        if: matrix.platform == 'mac' && steps.mac-signing.outputs.mode == 'unsigned'
         run: node config/scripts/ensure-native-runtime.mjs --runtime=electron && pnpm exec electron-builder --config config/electron-builder.config.cjs --mac --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'

@@ -22,6 +22,9 @@ const { verifySkillsCliRuntime } = require('./scripts/verify-skills-cli-runtime.
 const isMacHourly = process.env.ORCA_MAC_HOURLY === '1'
 const isMacAdhoc = process.env.ORCA_MAC_ADHOC === '1'
 const isMacRelease = process.env.ORCA_MAC_RELEASE === '1' || isMacHourly || isMacAdhoc
+// Fork: sign-only mode — identity signing (Squirrel-validatable updates) without
+// notarization, so a plain Apple Development cert suffices with no Apple creds.
+const isMacSigned = process.env.ORCA_MAC_SIGNED === '1' || isMacRelease
 const isLinuxArm64Release = process.env.ORCA_LINUX_ARM64_RELEASE === '1'
 const localBuildVersion = isMacRelease ? undefined : process.env.ORCA_LOCAL_BUILD_VERSION
 const devChannelBuildVersion = isMacHourly
@@ -399,7 +402,7 @@ module.exports = {
   },
   // Why: release builds should fail if signing is unavailable instead of
   // silently downgrading to ad-hoc artifacts that look shippable in CI logs.
-  forceCodeSigning: isMacRelease,
+  forceCodeSigning: isMacSigned,
   dmg: {
     artifactName: 'orca-macos-${arch}.${ext}'
   },
@@ -531,20 +534,20 @@ function chmodMacServeSimHelpers(resourcesDir, electronPlatformName) {
 
 async function signMacComputerUseHelper(helperAppPath, packager) {
   if (!existsSync(helperAppPath)) {
-    if (isMacRelease) {
+    if (isMacSigned) {
       throw new Error(`Missing Orca Computer Use helper app at ${helperAppPath}`)
     }
     return
   }
   const codeSigningInfo =
-    isMacRelease && process.env.CSC_LINK && packager?.codeSigningInfo?.value
+    isMacSigned && process.env.CSC_LINK && packager?.codeSigningInfo?.value
       ? await packager.codeSigningInfo.value
       : null
   const identity =
     process.env.ORCA_COMPUTER_MACOS_SIGN_IDENTITY ??
     process.env.CSC_NAME ??
     findInstalledMacSigningIdentity(codeSigningInfo?.keychainFile) ??
-    (isMacRelease ? null : '-')
+    (isMacSigned ? null : '-')
   if (!identity) {
     throw new Error('Missing signing identity for Orca Computer Use helper app')
   }
@@ -558,19 +561,19 @@ async function signMacComputerUseHelper(helperAppPath, packager) {
 
 async function signMacNotificationStatusHelper(helperPath, packager) {
   if (!existsSync(helperPath)) {
-    if (isMacRelease) {
+    if (isMacSigned) {
       throw new Error(`Missing orca-notification-status helper at ${helperPath}`)
     }
     return
   }
   const codeSigningInfo =
-    isMacRelease && process.env.CSC_LINK && packager?.codeSigningInfo?.value
+    isMacSigned && process.env.CSC_LINK && packager?.codeSigningInfo?.value
       ? await packager.codeSigningInfo.value
       : null
   const identity =
     process.env.CSC_NAME ??
     findInstalledMacSigningIdentity(codeSigningInfo?.keychainFile) ??
-    (isMacRelease ? null : '-')
+    (isMacSigned ? null : '-')
   if (!identity) {
     throw new Error('Missing signing identity for orca-notification-status helper')
   }
