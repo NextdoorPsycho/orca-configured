@@ -883,7 +883,7 @@ index c17dfef4c24c9a6bed98ddd4786d2611bc5827b8..456eaecf249ddff731de7c5f1750c390
      }
      if (init?.method === 'HEAD' && assetStatus !== undefined) {
 diff --git a/src/main/updater.test.ts b/src/main/updater.test.ts
-index dce8b39a7b6d70f2f44f43e5682f553225fc3ad6..535af66809a76b7ef991458cfe6526897c932ae5 100644
+index dce8b39a7b6d70f2f44f43e5682f553225fc3ad6..d7923e5336980ecbdcd259394affee2352e91429 100644
 --- a/src/main/updater.test.ts
 +++ b/src/main/updater.test.ts
 @@ -238,7 +238,7 @@ vi.mock('./updater-prerelease-feed', () => ({
@@ -987,7 +987,24 @@ index dce8b39a7b6d70f2f44f43e5682f553225fc3ad6..535af66809a76b7ef991458cfe652689
        })
      })
    })
-@@ -2571,7 +2571,7 @@ describe('updater', () => {
+@@ -2057,13 +2057,14 @@ describe('updater', () => {
+     const { setupAutoUpdater } = await import('./updater')
+ 
+     setupAutoUpdater(mainWindow as never, {
+-      getLastUpdateCheckAt: () => Date.now() - 23 * 60 * 60 * 1000,
++      // 20 of the 30-minute interval already elapsed -> 10 minutes remain.
++      getLastUpdateCheckAt: () => Date.now() - 20 * 60 * 1000,
+       setLastUpdateCheckAt
+     })
+ 
+     expect(autoUpdaterMock.checkForUpdates).not.toHaveBeenCalled()
+ 
+-    await vi.advanceTimersByTimeAsync(59 * 60 * 1000)
++    await vi.advanceTimersByTimeAsync(9 * 60 * 1000)
+     expect(autoUpdaterMock.checkForUpdates).not.toHaveBeenCalled()
+ 
+     await vi.advanceTimersByTimeAsync(60 * 1000)
+@@ -2571,7 +2572,7 @@ describe('updater', () => {
      // Setup pins the default generic feed; resolver only runs per check.
      expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
        provider: 'generic',
@@ -996,7 +1013,7 @@ index dce8b39a7b6d70f2f44f43e5682f553225fc3ad6..535af66809a76b7ef991458cfe652689
      })
      expect(autoUpdaterMock.allowPrerelease).not.toBe(true)
  
-@@ -2583,7 +2583,7 @@ describe('updater', () => {
+@@ -2583,7 +2584,7 @@ describe('updater', () => {
        })
        expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
          provider: 'generic',
@@ -1005,7 +1022,7 @@ index dce8b39a7b6d70f2f44f43e5682f553225fc3ad6..535af66809a76b7ef991458cfe652689
        })
        expect(autoUpdaterMock.checkForUpdates).toHaveBeenCalledTimes(1)
      })
-@@ -2605,7 +2605,7 @@ describe('updater', () => {
+@@ -2605,7 +2606,7 @@ describe('updater', () => {
      await vi.waitFor(() => {
        expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
          provider: 'generic',
@@ -1014,7 +1031,7 @@ index dce8b39a7b6d70f2f44f43e5682f553225fc3ad6..535af66809a76b7ef991458cfe652689
        })
      })
      expect(autoUpdaterMock.allowPrerelease).not.toBe(true)
-@@ -2629,7 +2629,7 @@ describe('updater', () => {
+@@ -2629,7 +2630,7 @@ describe('updater', () => {
      })
      expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
        provider: 'generic',
@@ -1023,7 +1040,7 @@ index dce8b39a7b6d70f2f44f43e5682f553225fc3ad6..535af66809a76b7ef991458cfe652689
      })
    })
  
-@@ -2660,7 +2660,7 @@ describe('updater', () => {
+@@ -2660,7 +2661,7 @@ describe('updater', () => {
      expect(autoUpdaterMock.setFeedURL.mock.calls.slice(feedCallsBeforeCheck)).not.toContainEqual([
        {
          provider: 'generic',
@@ -1032,7 +1049,7 @@ index dce8b39a7b6d70f2f44f43e5682f553225fc3ad6..535af66809a76b7ef991458cfe652689
        }
      ])
    })
-@@ -2684,7 +2684,7 @@ describe('updater', () => {
+@@ -2684,7 +2685,7 @@ describe('updater', () => {
      })
      expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
        provider: 'generic',
@@ -1041,7 +1058,7 @@ index dce8b39a7b6d70f2f44f43e5682f553225fc3ad6..535af66809a76b7ef991458cfe652689
      })
      expect(sendMock).not.toHaveBeenCalledWith(
        'updater:status',
-@@ -2726,16 +2726,16 @@ describe('updater', () => {
+@@ -2726,16 +2727,16 @@ describe('updater', () => {
      expect(autoUpdaterMock.checkForUpdates).toHaveBeenCalledTimes(1)
      expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
        provider: 'generic',
@@ -1061,7 +1078,7 @@ index dce8b39a7b6d70f2f44f43e5682f553225fc3ad6..535af66809a76b7ef991458cfe652689
        }
      ])
      expect(sendMock).not.toHaveBeenCalledWith(
-@@ -2778,7 +2778,7 @@ describe('updater', () => {
+@@ -2778,7 +2779,7 @@ describe('updater', () => {
      })
      expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
        provider: 'generic',
@@ -1070,7 +1087,7 @@ index dce8b39a7b6d70f2f44f43e5682f553225fc3ad6..535af66809a76b7ef991458cfe652689
      })
    })
  
-@@ -2813,7 +2813,7 @@ describe('updater', () => {
+@@ -2813,7 +2814,7 @@ describe('updater', () => {
      })
      expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
        provider: 'generic',
@@ -1079,7 +1096,7 @@ index dce8b39a7b6d70f2f44f43e5682f553225fc3ad6..535af66809a76b7ef991458cfe652689
      })
      expect(setLastUpdateCheckAt).not.toHaveBeenCalled()
  
-@@ -2833,7 +2833,7 @@ describe('updater', () => {
+@@ -2833,7 +2834,7 @@ describe('updater', () => {
      })
      expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
        provider: 'generic',
@@ -1088,7 +1105,7 @@ index dce8b39a7b6d70f2f44f43e5682f553225fc3ad6..535af66809a76b7ef991458cfe652689
      })
    })
  
-@@ -2883,7 +2883,7 @@ describe('updater', () => {
+@@ -2883,7 +2884,7 @@ describe('updater', () => {
      })
      expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
        provider: 'generic',
@@ -1097,7 +1114,7 @@ index dce8b39a7b6d70f2f44f43e5682f553225fc3ad6..535af66809a76b7ef991458cfe652689
      })
    })
  
-@@ -2922,7 +2922,7 @@ describe('updater', () => {
+@@ -2922,7 +2923,7 @@ describe('updater', () => {
      })
      expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
        provider: 'generic',
@@ -1106,7 +1123,7 @@ index dce8b39a7b6d70f2f44f43e5682f553225fc3ad6..535af66809a76b7ef991458cfe652689
      })
    })
  
-@@ -3188,11 +3188,11 @@ describe('updater', () => {
+@@ -3188,11 +3189,11 @@ describe('updater', () => {
        expect(autoUpdaterMock.checkForUpdates).toHaveBeenCalledTimes(2)
        expect(autoUpdaterMock.setFeedURL).toHaveBeenCalledWith({
          provider: 'generic',
@@ -1120,7 +1137,7 @@ index dce8b39a7b6d70f2f44f43e5682f553225fc3ad6..535af66809a76b7ef991458cfe652689
        })
      })
  
-@@ -3818,7 +3818,7 @@ describe('updater', () => {
+@@ -3818,7 +3819,7 @@ describe('updater', () => {
      })
      expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
        provider: 'generic',
@@ -1129,7 +1146,7 @@ index dce8b39a7b6d70f2f44f43e5682f553225fc3ad6..535af66809a76b7ef991458cfe652689
      })
    })
  
-@@ -3844,7 +3844,7 @@ describe('updater', () => {
+@@ -3844,7 +3845,7 @@ describe('updater', () => {
      expect(autoUpdaterMock.allowPrerelease).toBe(true)
      expect(autoUpdaterMock.setFeedURL).toHaveBeenLastCalledWith({
        provider: 'generic',
