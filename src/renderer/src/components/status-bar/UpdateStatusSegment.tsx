@@ -16,6 +16,47 @@ export function UpdateStatusSegment({
   const status = useAppStore((s) => s.updateStatus)
   const collapsed = useAppStore((s) => s.updateCardCollapsed)
   const setCollapsed = useAppStore((s) => s.setUpdateCardCollapsed)
+  const clearDismissedUpdateVersion = useAppStore((s) => s.clearDismissedUpdateVersion)
+
+  // Fork: 'available' pulses a subtle white/black crossfade icon here; clicking
+  // it re-surfaces the update card even after a dismissal.
+  if (status.state === 'available') {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={() => {
+              clearDismissedUpdateVersion()
+              setCollapsed(false)
+            }}
+            className="inline-flex items-center gap-1.5 cursor-pointer rounded px-1 py-0.5 hover:bg-accent/70"
+            aria-label={translate(
+              'auto.components.status.bar.UpdateStatusSegment.availableAria',
+              'Update available. Click to open the update prompt.'
+            )}
+          >
+            <Download className="fork-update-pulse size-3" />
+            {!iconOnly && (
+              <span className="text-[11px]">
+                {translate(
+                  'auto.components.status.bar.UpdateStatusSegment.availableLabel',
+                  'Update available'
+                )}
+              </span>
+            )}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" sideOffset={6}>
+          {translate(
+            'auto.components.status.bar.UpdateStatusSegment.availableTooltip',
+            'Orca v{{value0}} is available — click to update',
+            { value0: status.version }
+          )}
+        </TooltipContent>
+      </Tooltip>
+    )
+  }
 
   if (status.state !== 'downloading' && status.state !== 'downloaded' && status.state !== 'error') {
     return null

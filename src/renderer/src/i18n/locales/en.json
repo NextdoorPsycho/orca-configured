@@ -3357,7 +3357,10 @@
             "248ee5d8ef": "Orca v{{value0}} downloading… {{value1}}%",
             "57a29c3b0e": "Update ready",
             "fd1d3b3a1d": "Update downloading, {{value0}} percent. Click to expand.",
-            "9d13213a56": "Orca v{{value0}} ready to install"
+            "9d13213a56": "Orca v{{value0}} ready to install",
+            "availableAria": "Update available. Click to open the update prompt.",
+            "availableLabel": "Update available",
+            "availableTooltip": "Orca v{{value0}} is available — click to update"
           },
           "WorkspaceSpaceCompactPanel": {
             "a471aa9c24": "Updated",

@@ -3583,3 +3583,23 @@ html.onboarding-tour-start-transition::view-transition-new(root) {
     inset 0 1px 0 0 color-mix(in srgb, var(--foreground) 5%, transparent),
     0 10px 24px rgba(0, 0, 0, 0.18);
 }
+
+/* Fork: bottom-bar update-available indicator — slow white/black crossfade
+   (3s per fade leg) so it registers without nagging. */
+.fork-update-pulse {
+  animation: fork-update-pulse 6s ease-in-out infinite;
+}
+@keyframes fork-update-pulse {
+  0%,
+  100% {
+    color: #ffffff;
+  }
+  50% {
+    color: #000000;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fork-update-pulse {
+    animation: none;
+  }
+}

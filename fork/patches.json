@@ -65,6 +65,15 @@
     ]
   },
   {
+    "file": "0004-status-bar-update-available-indicator.patch",
+    "title": "Bottom-bar update-available indicator with white/black crossfade",
+    "paths": [
+      "src/renderer/src/components/status-bar/UpdateStatusSegment.tsx",
+      "src/renderer/src/components/status-bar/UpdateStatusSegment.test.tsx",
+      "src/renderer/src/assets/main.css"
+    ]
+  },
+  {
     "file": "0003-first-run-import-from-official-orca.patch",
     "title": "First-run prompt importing settings/workspaces from an official Orca install",
     "paths": [
