@@ -90,6 +90,34 @@ afterEach(() => {
   useAppStore.setState(useAppStore.getInitialState(), true)
 })
 
+describe('UpdateCard collapsed quiet mode', () => {
+  // Fork: collapsed means NOTHING renders — including 'available', upstream's
+  // primary announcement card. The status-bar indicator is the only signal.
+  it('renders nothing while collapsed, for every state', () => {
+    useAppStore.setState({
+      updateStatus: { state: 'available', version: '1.4.200', changelog: null },
+      updateChangelog: null,
+      dismissedUpdateVersion: null,
+      updateCardCollapsed: true,
+      updateReassuranceSeen: true
+    })
+    const { container } = render(<UpdateCard />)
+    expect(container.innerHTML).toBe('')
+  })
+
+  it('renders the available card once the user opens it', () => {
+    useAppStore.setState({
+      updateStatus: { state: 'available', version: '1.4.200', changelog: null },
+      updateChangelog: null,
+      dismissedUpdateVersion: null,
+      updateCardCollapsed: false,
+      updateReassuranceSeen: true
+    })
+    const { container } = render(<UpdateCard />)
+    expect(container.innerHTML).not.toBe('')
+  })
+})
+
 describe('UpdateCard Windows signature failures', () => {
   it('does not offer the rejected version as a manual publisher-check bypass', () => {
     const message =

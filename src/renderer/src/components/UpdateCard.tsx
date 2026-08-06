@@ -231,10 +231,11 @@ export function UpdateCard() {
     }
   }
 
-  if (
-    collapsed &&
-    (status.state === 'downloading' || status.state === 'downloaded' || status.state === 'error')
-  ) {
+  // Fork: collapsed suppresses EVERY state — upstream only gated in-flight
+  // phases, so an 'available' card still popped over quiet mode. The
+  // status-bar indicator is the sole ambient signal; user-initiated checks
+  // un-collapse via the store, and the indicator click opens this card.
+  if (collapsed) {
     return null
   }
 

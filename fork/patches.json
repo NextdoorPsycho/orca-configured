@@ -70,6 +70,7 @@
     "paths": [
       "src/renderer/src/components/status-bar/UpdateStatusSegment.tsx",
       "src/renderer/src/components/status-bar/UpdateStatusSegment.test.tsx",
+      "src/renderer/src/components/UpdateCard.tsx",
       "src/renderer/src/components/UpdateCard.test.ts",
       "src/renderer/src/store/slices/ui.ts",
       "src/renderer/src/assets/main.css"
