@@ -26,6 +26,85 @@ index 85d6a2c116a2b6971d69b58d9873ead22e6aa5c7..f53ebe3c001502119eb8940a3c2e85ea
 +    animation: none;
 +  }
 +}
+diff --git a/src/renderer/src/components/UpdateCard.test.ts b/src/renderer/src/components/UpdateCard.test.ts
+index 6eed56fad3eafbbf566a643a0243d2953c04b777..b1bc9358d7ebc178229555af6516b8663922e174 100644
+--- a/src/renderer/src/components/UpdateCard.test.ts
++++ b/src/renderer/src/components/UpdateCard.test.ts
+@@ -208,45 +208,62 @@ describe('dismissUpdate nudge-aware', () => {
+ // ── updateCardCollapsed ──────────────────────────────────────────────
+ 
+ describe('updateCardCollapsed', () => {
+-  it('defaults to false', () => {
++  // Fork: the card starts hidden — the status-bar indicator is the notification
++  // surface, and background update cycles must never interrupt a session.
++  it('defaults to true', () => {
+     const store = createTestStore()
+-    expect(store.getState().updateCardCollapsed).toBe(false)
++    expect(store.getState().updateCardCollapsed).toBe(true)
+   })
+ 
+   it('setUpdateCardCollapsed toggles the flag without persisting', () => {
+     const store = createTestStore()
+ 
+-    store.getState().setUpdateCardCollapsed(true)
+-    expect(store.getState().updateCardCollapsed).toBe(true)
++    store.getState().setUpdateCardCollapsed(false)
++    expect(store.getState().updateCardCollapsed).toBe(false)
+     expect(window.api.ui.set).not.toHaveBeenCalledWith(
+       expect.objectContaining({ updateCardCollapsed: expect.anything() })
+     )
+ 
+-    store.getState().setUpdateCardCollapsed(false)
+-    expect(store.getState().updateCardCollapsed).toBe(false)
++    store.getState().setUpdateCardCollapsed(true)
++    expect(store.getState().updateCardCollapsed).toBe(true)
+   })
+ 
+-  it('resets to false on every state transition so new phases re-surface', () => {
++  it('keeps background phase transitions from touching the card', () => {
+     const store = createTestStore()
+ 
++    setState(store, { state: 'checking' })
+     setState(store, { state: 'downloading', percent: 20, version: '1.2.0' })
+-    store.getState().setUpdateCardCollapsed(true)
+     expect(store.getState().updateCardCollapsed).toBe(true)
+ 
+-    // Why: percent-only updates are not transitions and must not reset.
+-    setState(store, { state: 'downloading', percent: 50, version: '1.2.0' })
++    setState(store, { state: 'downloaded', version: '1.2.0' })
++    expect(store.getState().updateCardCollapsed).toBe(true)
++
++    setState(store, { state: 'error', message: 'ENOSPC' })
+     expect(store.getState().updateCardCollapsed).toBe(true)
++  })
++
++  it('leaves a user-opened card open across background transitions', () => {
++    const store = createTestStore()
++
++    setState(store, { state: 'checking' })
++    setState(store, { state: 'downloading', percent: 20, version: '1.2.0' })
++    store.getState().setUpdateCardCollapsed(false)
+ 
+     setState(store, { state: 'downloaded', version: '1.2.0' })
+     expect(store.getState().updateCardCollapsed).toBe(false)
+   })
+ 
+-  it('re-surfaces the card when downloading transitions to error', () => {
++  it('re-surfaces the card on transitions within a user-initiated cycle', () => {
+     const store = createTestStore()
+ 
+-    setState(store, { state: 'downloading', percent: 80, version: '1.2.0' })
++    setState(store, { state: 'checking', userInitiated: true })
++    expect(store.getState().updateCardCollapsed).toBe(false)
++
+     store.getState().setUpdateCardCollapsed(true)
++    setState(store, { state: 'available', version: '1.2.0', changelog: null })
++    expect(store.getState().updateCardCollapsed).toBe(false)
+ 
++    store.getState().setUpdateCardCollapsed(true)
+     setState(store, { state: 'error', message: 'ENOSPC' })
+     expect(store.getState().updateCardCollapsed).toBe(false)
+   })
 diff --git a/src/renderer/src/components/status-bar/UpdateStatusSegment.test.tsx b/src/renderer/src/components/status-bar/UpdateStatusSegment.test.tsx
 new file mode 100644
 index 0000000000000000000000000000000000000000..98c78c558636264f367b27e01fe2de7e4ae704fa
@@ -193,3 +272,34 @@ index af41d79ea48bfe981a4fe60caeb04f07caeea620..492712dbdae0f7428343b6e52683ef85
  
    if (status.state !== 'downloading' && status.state !== 'downloaded' && status.state !== 'error') {
      return null
+diff --git a/src/renderer/src/store/slices/ui.ts b/src/renderer/src/store/slices/ui.ts
+index b738f18f32785abdbb8fc0f3a2d16c0ba600eec3..0d31ee095cb08bef9a9e04de42a3d18df092c93d 100644
+--- a/src/renderer/src/store/slices/ui.ts
++++ b/src/renderer/src/store/slices/ui.ts
+@@ -2595,8 +2595,14 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
+     }
+     // 'downloading'/'downloaded'/'error': leave updateChangelog untouched to keep the original 'available' content.
+     if (status.state !== prevState) {
+-      // Why: re-surface the card on each phase transition so a collapsed `downloading` doesn't bury `downloaded`/`error`.
+-      update.updateCardCollapsed = false
++      // Fork: only user-initiated cycles re-surface the card. Background phases
++      // stay quiet — the status-bar indicator is the notification surface — and
++      // never close a card the user opened themselves.
++      const userInitiated =
++        status.state === 'checking' ? status.userInitiated === true : get().updateUserInitiatedCycle
++      if (userInitiated) {
++        update.updateCardCollapsed = false
++      }
+     }
+     set(update)
+   },
+@@ -2628,7 +2634,8 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
+       }
+       return { dismissedUpdateVersion, updateUserInitiatedCycle: false }
+     }),
+-  updateCardCollapsed: false,
++  // Fork: hidden until opened via the status-bar indicator or a user-initiated check.
++  updateCardCollapsed: true,
+   setUpdateCardCollapsed: (collapsed) => set({ updateCardCollapsed: collapsed }),
+   updateReassuranceSeen: false,
+   markUpdateReassuranceSeen: () => {
