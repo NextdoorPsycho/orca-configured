@@ -249,8 +249,8 @@ vi.mock('./local-builds/local-build-feed-server', () => ({
   startLocalBuildFeed: startLocalBuildFeedMock
 }))
 
-/** Mirrors AUTO_UPDATE_CHECK_INTERVAL_MS in updater.ts. */
-const AUTO_UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000
+/** Mirrors AUTO_UPDATE_CHECK_INTERVAL_MS in updater.ts (fork: 30 min, not daily). */
+const AUTO_UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000
 
 describe('updater', () => {
   beforeEach(() => {
