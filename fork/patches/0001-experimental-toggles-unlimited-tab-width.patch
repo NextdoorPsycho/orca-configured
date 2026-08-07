@@ -518,10 +518,10 @@ index 0000000000000000000000000000000000000000..78473d77ea111ca658b91f7e2c2ef510
 +  } as const
 +}
 diff --git a/src/renderer/src/components/sidebar/SidebarNav.test.tsx b/src/renderer/src/components/sidebar/SidebarNav.test.tsx
-index 7d041bfb264c5bf93a6719c4863ec633ef298342..6057cb644c8bf375c76ea9a4cd505bfaef76a0ce 100644
+index 9d72ab4d489d367b8c2f941a3715b6e55f7eb59f..e628d0a1dd20d6d3f35afa90df1f6d2c2c12828a 100644
 --- a/src/renderer/src/components/sidebar/SidebarNav.test.tsx
 +++ b/src/renderer/src/components/sidebar/SidebarNav.test.tsx
-@@ -233,6 +233,16 @@ describe('SidebarNav', () => {
+@@ -238,6 +238,16 @@ describe('SidebarNav', () => {
      ).toBe(true)
    })
  
@@ -539,10 +539,10 @@ index 7d041bfb264c5bf93a6719c4863ec633ef298342..6057cb644c8bf375c76ea9a4cd505bfa
      expect(shouldShowAgentDashboardButton(null)).toBe(false)
      expect(shouldShowAgentDashboardButton({ experimentalAgentDashboardPopout: false })).toBe(false)
 diff --git a/src/renderer/src/components/sidebar/SidebarNav.tsx b/src/renderer/src/components/sidebar/SidebarNav.tsx
-index d2a36fb79e43c5f14fa4df259ab5296c63ec133a..0773c7a899b19f236b4b5ba6c02f39986fca3c36 100644
+index b14295d371492a527eaa7e745c74f9d789132156..f42dc704d9061a6bdf8830b072d328c2ef23dc60 100644
 --- a/src/renderer/src/components/sidebar/SidebarNav.tsx
 +++ b/src/renderer/src/components/sidebar/SidebarNav.tsx
-@@ -29,9 +29,9 @@ import { translate } from '@/i18n/i18n'
+@@ -20,9 +20,9 @@ import { lazyWithRetry } from '@/lib/lazy-with-retry'
  export { getSetupGuideSidebarEntryReady, shouldShowSetupGuideEntry } from './SetupGuideSidebarEntry'
  
  export function shouldShowAgentsButton(
@@ -816,7 +816,7 @@ index 15fdd70342f5256a350d3782d5127415086f680a..4c226bd56e09a060b0aaed308df8bd7e
        ? [
            {
 diff --git a/src/renderer/src/i18n/locales/en.json b/src/renderer/src/i18n/locales/en.json
-index 29218566eb87367c3cc26eb85c810c1ec1fca476..1b8083086feaa146c45b795be9ebe3cd1133f563 100644
+index b25a212f7a2c9bdd7c12fec4b1d0891dae6cdd2c..b5d6fc0272353a579211064cc0fec8bc715bafa9 100644
 --- a/src/renderer/src/i18n/locales/en.json
 +++ b/src/renderer/src/i18n/locales/en.json
 @@ -871,7 +871,9 @@
@@ -830,7 +830,7 @@ index 29218566eb87367c3cc26eb85c810c1ec1fca476..1b8083086feaa146c45b795be9ebe3cd
        },
        "useAppMenuPaste": {
          "pasteTooLarge": "Paste is too large."
-@@ -3355,7 +3357,10 @@
+@@ -3356,7 +3358,10 @@
              "248ee5d8ef": "Orca v{{value0}} downloading… {{value1}}%",
              "57a29c3b0e": "Update ready",
              "fd1d3b3a1d": "Update downloading, {{value0}} percent. Click to expand.",
@@ -842,7 +842,7 @@ index 29218566eb87367c3cc26eb85c810c1ec1fca476..1b8083086feaa146c45b795be9ebe3cd
            },
            "WorkspaceSpaceCompactPanel": {
              "a471aa9c24": "Updated",
-@@ -7084,7 +7089,9 @@
+@@ -7107,7 +7112,9 @@
            "devDescription": "Dev-only tools for exercising UI states.",
            "linearTitle": "Linear",
            "linearDescription": "How Linear works in Orca, setup checklist, agent skill, and example prompts.",
@@ -853,16 +853,21 @@ index 29218566eb87367c3cc26eb85c810c1ec1fca476..1b8083086feaa146c45b795be9ebe3cd
          },
          "SettingsFormControls": {
            "42a4d15a30": "No matching fonts.",
-@@ -10300,6 +10307,47 @@
-           "description": "Input device used for voice dictation. System default follows the OS microphone setting.",
-           "accessHint": "Allow microphone access to list input devices.",
-           "allowAccess": "Allow access"
+@@ -10329,6 +10336,47 @@
+           "body": "The terminal daemon was started by an Orca install that no longer exists, so macOS can’t attribute its commands to Orca — Accessibility and Automation grants are silently ignored (osascript fails with error -25211). Restarting the daemon fixes this; running terminal sessions will close.",
+           "openManageSessions": "Open Manage Sessions",
+           "title": "macOS permission grants aren’t reaching terminals"
 +        },
 +        "ForkChangesPane": {
 +          "unlimitedTabWidth": {
 +            "title": "Unlimited tab width",
 +            "copy": "Remove the maximum width cap on terminal pane tabs so titles get all the space they need.",
 +            "toggleLabel": "Toggle unlimited tab width"
++          },
++          "titlebarAppName": {
++            "title": "App name in titlebar",
++            "copy": "Show the Orca app name next to the window controls. Off reclaims the space.",
++            "toggleLabel": "Toggle the titlebar app name"
 +          },
 +          "sidebarTasks": {
 +            "title": "Tasks in sidebar",
@@ -878,25 +883,20 @@ index 29218566eb87367c3cc26eb85c810c1ec1fca476..1b8083086feaa146c45b795be9ebe3cd
 +            "title": "Automations in sidebar",
 +            "copy": "Show the Automations entry in the left sidebar.",
 +            "toggleLabel": "Toggle the sidebar Automations entry"
-+          },
-+          "titlebarAppName": {
-+            "title": "App name in titlebar",
-+            "copy": "Show the Orca app name next to the window controls. Off reclaims the space.",
-+            "toggleLabel": "Toggle the titlebar app name"
 +          }
 +        },
 +        "forkChanges": {
 +          "search": {
 +            "unlimitedTabWidthTitle": "Unlimited tab width",
 +            "unlimitedTabWidthDescription": "Remove the maximum width cap on terminal pane tabs so titles get all the space they need.",
++            "titlebarAppNameTitle": "App name in titlebar",
++            "titlebarAppNameDescription": "Show the Orca app name next to the window controls.",
 +            "sidebarTasksTitle": "Tasks in sidebar",
 +            "sidebarTasksDescription": "Show or hide the Tasks entry in the left sidebar.",
 +            "sidebarAgentsTitle": "Agents in sidebar",
 +            "sidebarAgentsDescription": "Show or hide the Agents entry in the left sidebar.",
 +            "sidebarAutomationsTitle": "Automations in sidebar",
-+            "sidebarAutomationsDescription": "Show or hide the Automations entry in the left sidebar.",
-+            "titlebarAppNameTitle": "App name in titlebar",
-+            "titlebarAppNameDescription": "Show the Orca app name next to the window controls."
++            "sidebarAutomationsDescription": "Show or hide the Automations entry in the left sidebar."
 +          }
          }
        },
@@ -914,7 +914,7 @@ index 45efa2031e25c82ac85d80f93277b59c25c66e75..c1cb217483ef93e7ac404717a6a0c9cc
    'agents',
    'orchestration',
 diff --git a/src/shared/constants.test.ts b/src/shared/constants.test.ts
-index e8c55be052d4e74b1846f3c7f8dd86e38176f831..e6922e79a1de5d1e950e4bfd1b68698af4e38771 100644
+index f3a6ff1b89e69f9216826bb7f447bb7e9d9356ab..36159a104c2d35601a0935165b778cc3b91acc0c 100644
 --- a/src/shared/constants.test.ts
 +++ b/src/shared/constants.test.ts
 @@ -107,6 +107,10 @@ describe('getDefaultSettings', () => {
@@ -926,13 +926,13 @@ index e8c55be052d4e74b1846f3c7f8dd86e38176f831..e6922e79a1de5d1e950e4bfd1b68698a
 +  })
 +
    it('keeps the agent dashboard popout disabled by default', () => {
-     expect(getDefaultSettings('/tmp').experimentalAgentDashboardPopout).toBe(false)
-     expect(getDefaultSettings('/tmp').experimentalAgentDashboardShowIdle).toBe(false)
+     expect(getDefaultSettings('/tmp').experimentalAgentDashboardPopout).toBeUndefined()
+     expect(getDefaultSettings('/tmp').experimentalAgentDashboardShowIdle).toBeUndefined()
 diff --git a/src/shared/constants.ts b/src/shared/constants.ts
-index 80fca73c828fb84152862f22d6af67e1f1fa454f..6e12a248399eb8246fdf64c27339a6d9fa2335bb 100644
+index 728fec9bd6152dd03b6dc149c62d2a4b3b21b3be..4de861679f49b822a5abf01320b0726c4325b931 100644
 --- a/src/shared/constants.ts
 +++ b/src/shared/constants.ts
-@@ -367,6 +367,7 @@ export function getDefaultSettings(homedir: string): GlobalSettings {
+@@ -363,6 +363,7 @@ export function getDefaultSettings(homedir: string): GlobalSettings {
      agentHibernationIdleMs: 30 * 60 * 1000,
      experimentalNewWorktreeCardStyle: false,
      experimentalEphemeralVms: false,
@@ -941,10 +941,10 @@ index 80fca73c828fb84152862f22d6af67e1f1fa454f..6e12a248399eb8246fdf64c27339a6d9
      // Why: local desktop stays the default until the user picks a saved runtime environment.
      activeRuntimeEnvironmentId: null,
 diff --git a/src/shared/types.ts b/src/shared/types.ts
-index 947786da5bc87017ab24b858dac23276b0cddbe8..499075a70f49de068b95006fa68363fbca2870ae 100644
+index cfa041d396f0e891373826bed97601f417e40963..646d929e5276cc6ee280ffb62e79c503017470e1 100644
 --- a/src/shared/types.ts
 +++ b/src/shared/types.ts
-@@ -2895,6 +2895,8 @@ export type GlobalSettings = {
+@@ -2900,6 +2900,8 @@ export type GlobalSettings = {
    showTasksButton: boolean
    /** Only toggles the sidebar shortcut; Automations stay reachable from Settings/View menu. */
    showAutomationsButton?: boolean
@@ -953,7 +953,7 @@ index 947786da5bc87017ab24b858dac23276b0cddbe8..499075a70f49de068b95006fa68363fb
    /** Only toggles the sidebar shortcut; Orca Mobile stays reachable from Settings. */
    showMobileButton?: boolean
    /** Pinned workspaces show in one sidebar location by default; opt in to also show them in their natural groups. */
-@@ -3084,6 +3086,8 @@ export type GlobalSettings = {
+@@ -3089,6 +3091,8 @@ export type GlobalSettings = {
    experimentalNewWorktreeCardStyle?: boolean
    /** Experimental: per-workspace on-demand environment recipes and setup surface. */
    experimentalEphemeralVms?: boolean

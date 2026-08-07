@@ -609,6 +609,9 @@ jobs:
 
       - name: File or update patch-failure issue
         if: steps.notes.outputs.failed == 'true'
+        # A broken notifier must never block the release itself (a disabled-Issues
+        # repo setting once failed every scheduled publish for twelve hours).
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.resolve.outputs.tag }}

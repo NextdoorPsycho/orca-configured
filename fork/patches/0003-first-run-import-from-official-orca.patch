@@ -1,5 +1,5 @@
 diff --git a/src/main/index.ts b/src/main/index.ts
-index 61c7d799f94b84fc293411488ebf452b55bdf49b..6b3fda8f3d1c0e5c90308eedf6be42a873d2322b 100644
+index 790a8a2ed695146fb9f5cbdb30e1819e3835bbb5..feb2019aede9eaf83fa7f2257aa5362e334184e3 100644
 --- a/src/main/index.ts
 +++ b/src/main/index.ts
 @@ -151,6 +151,7 @@ import {
@@ -10,7 +10,7 @@ index 61c7d799f94b84fc293411488ebf452b55bdf49b..6b3fda8f3d1c0e5c90308eedf6be42a8
  import { startFirstWindowStartupServices } from './startup/first-window-startup-services'
  import { recoverLegacyWorkerTerminalsForRendererStartup } from './startup/legacy-worker-renderer-recovery'
  import { createWslCliReconciliationStartupBarrier } from './startup/wsl-cli-reconciliation-startup-barrier'
-@@ -2061,6 +2062,12 @@ void app.whenReady().then(async () => {
+@@ -2070,6 +2071,12 @@ void app.whenReady().then(async () => {
      managedWslCliReconciliationReady
    )
  

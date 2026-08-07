@@ -419,10 +419,10 @@ index 9b593f5716ab099edcab62719f4e45911f85512d..3e0c3021a8c8ce2e30c04a5505f90f93
    })
  
 diff --git a/native/computer-use-macos/Sources/OrcaComputerUseMacOS/main.swift b/native/computer-use-macos/Sources/OrcaComputerUseMacOS/main.swift
-index 50ecae7d024eaa67d29178fad34312e8a26d0f63..1b2e08b3f24d2fda8a3d4cc4124f8f637988895e 100644
+index 7ecbdbf004a5fda174d257b8b75b40a5120e523f..a847f2c8e9660aec4e82f4a9174c56614702a51f 100644
 --- a/native/computer-use-macos/Sources/OrcaComputerUseMacOS/main.swift
 +++ b/native/computer-use-macos/Sources/OrcaComputerUseMacOS/main.swift
-@@ -3755,8 +3755,8 @@ private func isTrustedOrcaApplication(_ pid: pid_t) -> Bool {
+@@ -3980,8 +3980,8 @@ private func isTrustedOrcaApplication(_ pid: pid_t) -> Bool {
      }
      // Why: dev validation runs from per-worktree wrapper apps with stable
      // Orca-owned bundle ids; the sidecar peer check must still authorize them.
@@ -456,12 +456,12 @@ index 55e4ec917211829c7fa77f1917f63b85a1fecff0..941036369b9fac77321e338d04721ae6
          registerEvents: RegisterEvents,
          closeDescriptor: @escaping CloseDescriptor,
 diff --git a/package.json b/package.json
-index d800838281bbed47b722f02ea815615ca1979f01..bca021beb272706dae3674d434b217c04d7b26bb 100644
+index d68d3a70222f8503691acf0a691fd86902371786..169c0226ea2f9252a76f2d0c1b0b2db67eac88d9 100644
 --- a/package.json
 +++ b/package.json
 @@ -2,8 +2,8 @@
    "name": "orca",
-   "version": "1.4.174-rc.0",
+   "version": "1.4.176",
    "description": "Next-gen IDE for parallel agentic development",
 -  "homepage": "https://github.com/stablyai/orca",
 -  "author": "stablyai",
