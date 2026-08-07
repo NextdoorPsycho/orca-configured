@@ -130,6 +130,71 @@ versions.
   user through the status-bar indicator; the update card renders nothing while
   collapsed and only user-initiated checks un-collapse it.
 
+## Updater runbook — start here when asked to "fix the updater"
+
+Architecture in one breath: the app checks
+`github.com/NextdoorPsycho/orca-configured/releases` every 30 minutes
+(scrapes the atom feed, HEAD-probes every manifest asset, downloads only on
+user click, installs only on user restart; Squirrel.Mac validates the new
+bundle's signature against the installed one). CI publishes those releases
+per the pipeline above. So "the updater is broken" is always one of: the
+client, the release contents, the signature, or the pipeline.
+
+**Diagnose in this order:**
+
+1. Pipeline: `gh run list --repo NextdoorPsycho/orca-configured --workflow "Fork Release" --limit 10`.
+   Failing runs → `gh run view <id> --log-failed`. A lingering Draft release
+   = a publish that never completed.
+2. Release contents: `gh release view <tag> --json body` — the notes carry a
+   per-platform patch table; `assets` must include every `latest*.yml` plus
+   the files those manifests name.
+3. Client: the app's log (userData `logs/`) prints
+   `updater] release feed fallback: current=<v> … → <feed URL>` — wrong URL
+   or wrong `current` explains most "no update offered" reports.
+
+**Failure catalog (all previously seen, with the proven fix):**
+
+- **Patch fails against a new upstream tag** (release notes table shows
+  `failed`; required 0002 hard-fails legs instead): do an upstream rebase —
+  `git fetch upstream "+refs/tags/<tag>:refs/upstream-release/<tag>"`, merge
+  it into main, resolve (for `en.json`: take THEIRS then
+  `pnpm run sync:localization-catalog`), write the tag's commit sha into
+  `fork/upstream-base`, `node fork/export-patches.mjs`, run the full gates,
+  commit merge + patches, push. Done 2026-08-07 for v1.4.176; use that merge
+  commit as the reference.
+- **All legs green but publish failed**: read the publish job log. The
+  notifier once died on repo-disabled Issues and blocked publishing for 12h —
+  Issues must stay ENABLED on the repo, and the issue step is
+  `continue-on-error` now; keep it that way.
+- **Client error "code signature … did not pass validation"**: signing
+  identity mismatch — the installed app and the update must carry the same
+  identity. Happens after cert changes (renewal!) and means ONE manual DMG
+  install of the newest release, then updates flow again. Expected renewal:
+  Apple Development cert expires 2026-09-20 (procedure in
+  `~/.claude` memory and below).
+- **CI mac leg: "MAC verification failed during PKCS12 import"**: the
+  CSC_LINK p12 must be exported with `openssl pkcs12 -export -legacy` —
+  macOS `security import` cannot read OpenSSL 3's default encryption.
+  Signing material lives in `~/.orca-fork-signing/` (0700) on Brian's Mac;
+  secrets are `CSC_LINK` (base64 p12) + `CSC_KEY_PASSWORD`.
+- **Transient runner failures** ("Service Unavailable" fetching actions,
+  etc.): `gh run rerun <id> --failed` — reruns complete into the same draft.
+- **Stale drafts accumulating**: `gh release delete <tag> --yes` for drafts
+  of superseded tags; the resolve job self-heals only the newest tag.
+- **Installed app never sees updates**: check its version. `.local.`-stamped
+  builds (from `pnpm build:mac`) sort ABOVE fork rebuilds — replace with a
+  CI-built release. A bare-stable install on the Stable channel skips
+  prerelease-shaped fork rebuilds — set Settings > Release channel > RC.
+- **Local commits fail with "failed to write commit object"** (blocks the
+  patch-export loop): Sourcetree re-stomped `gpg.ssh.program` to empty in
+  `~/.gitconfig`. Fix: `git config --global gpg.ssh.program /usr/bin/ssh-keygen`
+  (this repo also pins it locally). If signing prompts for a passphrase:
+  `ssh-add --apple-load-keychain`.
+- **Updating the app for Brian**: use the in-app flow (or ask him to click);
+  never force-kill — see "Updating the running app on this machine" above.
+  After any signing-identity change, expect one Keychain "Always Allow" and
+  one TCC re-grant round on his machine.
+
 ## Known machine-local test failures (not code bugs)
 
 `wsl-hook-relay-live.integration.test.ts` (env-dependent), the two
